@@ -478,6 +478,47 @@ if uploaded_file:
 
         st.dataframe(result_df, use_container_width=True, height=420)
 
+        # ── Per-post detail ──
+        st.markdown('<div class="section-label">🔍 Post Details</div>', unsafe_allow_html=True)
+
+        for _, row in result_df.iterrows():
+            has_error = str(row.get("Error", "")).strip() not in ("", "nan")
+            status_icon = "🔴" if has_error else "✅"
+            label = f"{status_icon} {row['Original_Link'][:80]}{'…' if len(str(row['Original_Link'])) > 80 else ''}"
+
+            with st.expander(label, expanded=False):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Impressions", f"{int(row['Impressions']):,}")
+                c2.metric("Engagement",  f"{int(row['Engagement']):,}")
+                c3.metric("Likes",       f"{int(row['Likes']):,}")
+
+                c4, c5, c6 = st.columns(3)
+                c4.metric("Retweets",  f"{int(row['Retweets_Shares']):,}")
+                c5.metric("Quotes",    f"{int(row['Quotes']):,}")
+                c6.metric("Bookmarks", f"{int(row['Bookmarks_Saves']):,}")
+
+                c7, c8 = st.columns(2)
+                c7.metric("Replies",  f"{int(row['Replies_Comments']):,}")
+                c8.metric("Platform", row["Platform"])
+
+                if str(row.get("Content", "")).strip() not in ("", "nan"):
+                    st.markdown("**Tweet content**")
+                    st.markdown(
+                        f'<div style="background:#F4FBF7;border:1px solid #D1EEE0;border-left:3px solid #3DD68C;'
+                        f'border-radius:8px;padding:12px 16px;font-size:0.88rem;color:#0A2818;line-height:1.6;">'
+                        f'{row["Content"]}</div>',
+                        unsafe_allow_html=True
+                    )
+
+                if has_error:
+                    st.error(f"⚠️ Error: {row['Error']}")
+
+                st.markdown(
+                    f'<a href="{row["Original_Link"]}" target="_blank" '
+                    f'style="font-size:0.8rem;color:#3DD68C;font-weight:600;">↗ Open original post</a>',
+                    unsafe_allow_html=True
+                )
+
         # ── Downloads ──
         st.markdown('<div class="section-label">📥 Export</div>', unsafe_allow_html=True)
         dl1, dl2 = st.columns(2)
