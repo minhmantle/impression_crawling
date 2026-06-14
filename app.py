@@ -406,6 +406,21 @@ if uploaded_file:
 
     if st.button("🚀 Fetch Metrics & Calculate Engagement", type="primary"):
 
+        # ── Sleep warning banner ──
+        st.markdown('''
+        <div style="background:#FFF3CD;border:2px solid #F0A500;border-radius:10px;
+                    padding:14px 20px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:1.5rem;">⚠️</span>
+          <div>
+            <strong style="color:#7A4F00;font-size:0.95rem;">Keep your computer awake!</strong>
+            <p style="color:#7A4F00;font-size:0.85rem;margin:2px 0 0;">
+              Do not let your screen sleep or switch tabs while fetching — 
+              the task will stop and you'll have to start over from scratch.
+            </p>
+          </div>
+        </div>
+        ''', unsafe_allow_html=True)
+
         # Show a random funny message
         joke = random.choice(FUNNY_MESSAGES)
         joke_placeholder = st.empty()
