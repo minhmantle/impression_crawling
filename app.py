@@ -356,14 +356,31 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    # Parse file
+    # ── Parse file — support multi-sheet Excel ──
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
+        sheet_names = None
     elif uploaded_file.name.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(uploaded_file)
+        xls = pd.ExcelFile(uploaded_file)
+        sheet_names = xls.sheet_names
+        if len(sheet_names) > 1:
+            st.markdown('<div class="section-label">📑 Select Sheet</div>', unsafe_allow_html=True)
+            selected_sheet = st.selectbox(
+                "This file has multiple sheets — which one do you want to scan?",
+                sheet_names,
+                index=0
+            )
+        else:
+            selected_sheet = sheet_names[0]
+        df = pd.read_excel(xls, sheet_name=selected_sheet)
+        st.markdown(
+            f'<p style="color:#4A7A5E;font-size:0.8rem;margin-top:-4px;">📄 Sheet: <strong>{selected_sheet}</strong> &nbsp;·&nbsp; {len(sheet_names)} sheet(s) total</p>',
+            unsafe_allow_html=True
+        )
     else:
         lines = [l.strip() for l in uploaded_file.getvalue().decode("utf-8").splitlines() if l.strip()]
         df = pd.DataFrame({"Link": lines})
+        sheet_names = None
 
     st.success(f"✅ Loaded **{len(df)} rows** from `{uploaded_file.name}`")
 
