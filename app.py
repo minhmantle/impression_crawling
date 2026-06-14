@@ -476,7 +476,7 @@ if uploaded_file:
         </div>
         """, unsafe_allow_html=True)
 
-        st.dataframe(result_df, use_container_width=True, height=420)
+        st.dataframe(result_df, use_container_width=True)
 
         # ── Per-post detail ──
         st.markdown('<div class="section-label">🔍 Post Details</div>', unsafe_allow_html=True)
