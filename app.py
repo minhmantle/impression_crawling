@@ -186,10 +186,8 @@ st.markdown("""
   /* ── Dataframe / table ── */
   [data-testid="stDataFrame"] {
     border-radius: 10px !important;
-    overflow: hidden;
     border: 1px solid var(--mantle-border) !important;
   }
-  .dvn-scroller { background: var(--mantle-surface) !important; }
 
   /* ── Spinner text ── */
   [data-testid="stSpinner"] p {
@@ -280,7 +278,7 @@ FUNNY_MESSAGES = [
 def get_platform(url):
     domain = urlparse(url.lower()).netloc
     if any(x in domain for x in ['x.com', 'twitter.com']):
-        return "X / Twitter"
+        return "X/Twitter"
     elif 'youtube.com' in domain or 'youtu.be' in domain:
         return "YouTube"
     elif 'facebook.com' in domain:
@@ -420,7 +418,7 @@ if uploaded_file:
                     "Error":             ""
                 }
 
-                if platform == "X / Twitter":
+                if platform == "X/Twitter":
                     tid = extract_tweet_id(link)
                     if tid:
                         data = fetch_x_metrics(tid)
@@ -460,7 +458,7 @@ if uploaded_file:
         # ── Summary stats ──
         st.markdown('<div class="section-label">📊 Results</div>', unsafe_allow_html=True)
 
-        x_rows = result_df[result_df["Platform"] == "X / Twitter"]
+        x_rows = result_df[result_df["Platform"] == "X/Twitter"]
         total_impressions = x_rows["Impressions"].sum()
         total_engagement  = x_rows["Engagement"].sum()
         total_likes       = x_rows["Likes"].sum()
