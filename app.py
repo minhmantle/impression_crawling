@@ -3,17 +3,284 @@ import pandas as pd
 import re
 import requests
 import time
+import random
 from urllib.parse import urlparse
 from io import BytesIO
 
-st.set_page_config(page_title="Multi-Platform Post Checker", layout="wide")
-st.title("🔥 Multi-Platform Post Checker [FREE]")
-st.markdown("**Debug mode** • Hỗ trợ X/Twitter chính")
+# ====================== PAGE CONFIG ======================
+st.set_page_config(
+    page_title="Post Checker — Mantle",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
+# ====================== MANTLE BRAND CSS ======================
+st.markdown("""
+<style>
+  /* ── Google Fonts ── */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+  /* ── Root palette (Mantle) ── */
+  :root {
+    --mantle-dark:    #0A2818;
+    --mantle-mid:     #1A4D30;
+    --mantle-mint:    #3DD68C;
+    --mantle-mint-lt: #A8F0CB;
+    --mantle-bg:      #F4FBF7;
+    --mantle-surface: #FFFFFF;
+    --mantle-border:  #D1EEE0;
+    --mantle-text:    #0A2818;
+    --mantle-muted:   #4A7A5E;
+    --mantle-error:   #C0392B;
+    --mantle-warn:    #E67E22;
+  }
+
+  /* ── Global reset ── */
+  html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--mantle-bg) !important;
+    font-family: 'Inter', sans-serif !important;
+    color: var(--mantle-text) !important;
+  }
+
+  [data-testid="stHeader"] {
+    background-color: var(--mantle-bg) !important;
+    border-bottom: 1px solid var(--mantle-border);
+  }
+
+  /* ── Hero header ── */
+  .mantle-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 0 24px;
+    border-bottom: 2px solid var(--mantle-border);
+    margin-bottom: 32px;
+  }
+  .mantle-logo-ring {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--mantle-dark) 0%, var(--mantle-mid) 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mantle-logo-ring svg { width: 32px; height: 32px; }
+  .mantle-header-text h1 {
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    color: var(--mantle-dark) !important;
+    margin: 0 0 2px !important;
+    letter-spacing: -0.02em;
+  }
+  .mantle-header-text p {
+    font-size: 0.82rem !important;
+    color: var(--mantle-muted) !important;
+    margin: 0 !important;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .mantle-badge {
+    display: inline-block;
+    background: var(--mantle-mint-lt);
+    color: var(--mantle-dark);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 8px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Cards / surfaces ── */
+  .mantle-card {
+    background: var(--mantle-surface);
+    border: 1px solid var(--mantle-border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(10,40,24,0.06);
+  }
+  .mantle-card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--mantle-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+  }
+
+  /* ── File uploader ── */
+  [data-testid="stFileUploader"] {
+    background: var(--mantle-surface) !important;
+    border: 1.5px dashed var(--mantle-mint) !important;
+    border-radius: 10px !important;
+  }
+  [data-testid="stFileUploader"]:hover {
+    border-color: var(--mantle-dark) !important;
+    background: #EDFAF4 !important;
+  }
+
+  /* ── Selectbox ── */
+  [data-testid="stSelectbox"] > div > div {
+    background: var(--mantle-surface) !important;
+    border: 1px solid var(--mantle-border) !important;
+    border-radius: 8px !important;
+    color: var(--mantle-text) !important;
+  }
+
+  /* ── Primary button ── */
+  .stButton > button[kind="primary"],
+  .stButton > button {
+    background: var(--mantle-dark) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    padding: 10px 24px !important;
+    letter-spacing: 0.01em;
+    transition: background 0.18s ease, transform 0.1s ease;
+  }
+  .stButton > button:hover {
+    background: var(--mantle-mid) !important;
+    transform: translateY(-1px);
+  }
+  .stButton > button:active { transform: translateY(0); }
+
+  /* ── Download buttons ── */
+  .stDownloadButton > button {
+    background: var(--mantle-surface) !important;
+    color: var(--mantle-dark) !important;
+    border: 1.5px solid var(--mantle-mint) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+  }
+  .stDownloadButton > button:hover {
+    background: var(--mantle-mint-lt) !important;
+    border-color: var(--mantle-dark) !important;
+  }
+
+  /* ── Progress bar ── */
+  [data-testid="stProgressBar"] > div > div {
+    background: linear-gradient(90deg, var(--mantle-mint) 0%, var(--mantle-dark) 100%) !important;
+    border-radius: 4px;
+  }
+
+  /* ── Success / info / warning banners ── */
+  [data-testid="stAlert"] {
+    border-radius: 10px !important;
+    border-left: 4px solid var(--mantle-mint) !important;
+    background: #EDFAF4 !important;
+    color: var(--mantle-text) !important;
+  }
+
+  /* ── Dataframe / table ── */
+  [data-testid="stDataFrame"] {
+    border-radius: 10px !important;
+    overflow: hidden;
+    border: 1px solid var(--mantle-border) !important;
+  }
+  .dvn-scroller { background: var(--mantle-surface) !important; }
+
+  /* ── Spinner text ── */
+  [data-testid="stSpinner"] p {
+    color: var(--mantle-muted) !important;
+    font-weight: 500;
+  }
+
+  /* ── Section labels ── */
+  .section-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--mantle-dark);
+    margin: 24px 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--mantle-border);
+    margin-left: 8px;
+  }
+
+  /* ── Loading toast ── */
+  .loading-joke {
+    background: var(--mantle-dark);
+    color: var(--mantle-mint);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    margin: 12px 0;
+    font-style: italic;
+    letter-spacing: 0.01em;
+  }
+
+  /* ── Stat pills ── */
+  .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .stat-pill {
+    background: var(--mantle-bg);
+    border: 1px solid var(--mantle-border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    color: var(--mantle-muted);
+    font-weight: 500;
+  }
+  .stat-pill strong {
+    display: block;
+    font-size: 1.15rem;
+    color: var(--mantle-dark);
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+  }
+
+  /* ── Sidebar ── */
+  [data-testid="stSidebar"] {
+    background: var(--mantle-dark) !important;
+    color: white !important;
+  }
+
+  /* Hide Streamlit branding */
+  #MainMenu, footer, header { visibility: hidden; }
+  .block-container { padding-top: 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ====================== FUNNY LOADING MESSAGES ======================
+FUNNY_MESSAGES = [
+    "💸 This tool is free, so please be patient — good things take time (and budget cuts).",
+    "☕ Fetching data... Minh Anh is probably sipping coffee right now and can't speed this up.",
+    "🐌 Fun fact: this API is powered by hopes, dreams, and zero dollars.",
+    "🔍 Still working... If this takes forever, it's not a bug, it's a free-tier feature.",
+    "🛠️ For any technical issues, please reach out to Minh Anh. She will fix it. Eventually.",
+    "🌱 Growing your data organically. No paid boosts here.",
+    "🤖 The robots are working hard. The unpaid kind.",
+    "📡 Pinging the internet... it pinged back 'lol good luck'.",
+    "⏳ Loading metrics. If you see this for more than 30s, the API is having a moment.",
+    "🎯 Accuracy not guaranteed, vibes are. Reach out to Minh Anh for serious bugs.",
+    "🚀 This would be instant if we had a budget. We don't. Enjoy the wait!",
+    "🧘 Take a deep breath. The data will arrive when it's ready (or in ~30 seconds, whichever comes first).",
+]
+
+# ====================== HELPERS ======================
 def get_platform(url):
     domain = urlparse(url.lower()).netloc
     if any(x in domain for x in ['x.com', 'twitter.com']):
-        return "X/Twitter"
+        return "X / Twitter"
     elif 'youtube.com' in domain or 'youtu.be' in domain:
         return "YouTube"
     elif 'facebook.com' in domain:
@@ -28,7 +295,7 @@ def extract_tweet_id(url):
     patterns = [r'/status/(\d+)', r'twitter\.com/[^/]+/status/(\d+)', r'x\.com/[^/]+/status/(\d+)']
     for p in patterns:
         m = re.search(p, url)
-        if m: 
+        if m:
             return m.group(1)
     return None
 
@@ -37,18 +304,16 @@ def fetch_x_metrics(tid):
         url = f"https://api.fxtwitter.com/status/{tid}"
         headers = {"User-Agent": "Mantle-Squad-Tool/1.0"}
         resp = requests.get(url, headers=headers, timeout=12)
-        
+
         if resp.status_code == 200:
             data = resp.json()
             tweet = data.get("tweet") or {}
-            
-            likes = tweet.get("likes", 0)
-            retweets = tweet.get("retweets", 0)
-            quotes = tweet.get("quotes", 0)
+            likes     = tweet.get("likes", 0)
+            retweets  = tweet.get("retweets", 0)
+            quotes    = tweet.get("quotes", 0)
             bookmarks = tweet.get("bookmarks", 0)
-            views = tweet.get("views", 0)
+            views     = tweet.get("views", 0)
             engagement = likes + retweets + quotes + bookmarks
-            
             return {
                 "impressions": views,
                 "likes": likes,
@@ -61,95 +326,227 @@ def fetch_x_metrics(tid):
                 "error": ""
             }
         else:
-            return {
-                "impressions":0, "likes":0, "retweets":0, "quotes":0, 
-                "bookmarks":0, "replies":0, "engagement":0, "content":"", 
-                "error": f"HTTP {resp.status_code}"
-            }
+            return {"impressions":0,"likes":0,"retweets":0,"quotes":0,
+                    "bookmarks":0,"replies":0,"engagement":0,"content":"",
+                    "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        return {
-            "impressions":0, "likes":0, "retweets":0, "quotes":0, 
-            "bookmarks":0, "replies":0, "engagement":0, "content":"", 
-            "error": str(e)[:100]
-        }
+        return {"impressions":0,"likes":0,"retweets":0,"quotes":0,
+                "bookmarks":0,"replies":0,"engagement":0,"content":"",
+                "error": str(e)[:100]}
 
-# ====================== MAIN APP ======================
-uploaded_file = st.file_uploader("Upload file chứa link (CSV/Excel/TXT)", 
-                                type=["csv", "xlsx", "xls", "txt"])
+# ====================== HEADER ======================
+st.markdown("""
+<div class="mantle-header">
+  <div class="mantle-logo-ring">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="4" fill="#3DD68C"/>
+      <g opacity="0.9">
+        <rect x="15" y="1" width="2" height="6" rx="1" fill="#3DD68C"/>
+        <rect x="15" y="25" width="2" height="6" rx="1" fill="#3DD68C" opacity="0.4"/>
+        <rect x="25" y="15" width="6" height="2" rx="1" fill="#3DD68C" opacity="0.7"/>
+        <rect x="1" y="15" width="6" height="2" rx="1" fill="#3DD68C" opacity="0.5"/>
+        <rect x="22.3" y="3.5" width="2" height="6" rx="1" fill="#3DD68C" opacity="0.85" transform="rotate(45 23.3 6.5)"/>
+        <rect x="3.5" y="22.3" width="2" height="6" rx="1" fill="#3DD68C" opacity="0.35" transform="rotate(45 4.5 25.3)"/>
+        <rect x="22.3" y="22.3" width="2" height="6" rx="1" fill="#3DD68C" opacity="0.6" transform="rotate(-45 23.3 25.3)"/>
+        <rect x="3.5" y="3.5" width="2" height="6" rx="1" fill="#3DD68C" opacity="0.55" transform="rotate(-45 4.5 6.5)"/>
+      </g>
+    </svg>
+  </div>
+  <div class="mantle-header-text">
+    <h1>Post Checker <span class="mantle-badge">Mantle Internal</span></h1>
+    <p>X / Twitter engagement metrics — developed by Mantle</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ====================== UPLOAD SECTION ======================
+st.markdown('<div class="section-label">📂 Upload Your File</div>', unsafe_allow_html=True)
+
+uploaded_file = st.file_uploader(
+    "Drag & drop or browse — CSV, Excel, or plain TXT (one link per line)",
+    type=["csv", "xlsx", "xls", "txt"],
+    label_visibility="visible"
+)
 
 if uploaded_file:
+    # Parse file
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     elif uploaded_file.name.endswith((".xlsx", ".xls")):
         df = pd.read_excel(uploaded_file)
     else:
-        lines = [line.strip() for line in uploaded_file.getvalue().decode("utf-8").splitlines() if line.strip()]
+        lines = [l.strip() for l in uploaded_file.getvalue().decode("utf-8").splitlines() if l.strip()]
         df = pd.DataFrame({"Link": lines})
 
-    st.success(f"✅ Đã load {len(df)} links")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.success(f"✅ Loaded **{len(df)} rows** from `{uploaded_file.name}`")
+    with col2:
+        link_col = st.selectbox("Column containing links", df.columns, index=0)
 
-    link_col = st.selectbox("Chọn cột chứa link", df.columns, index=0)
+    st.markdown('<div class="section-label">⚙️ Run Analysis</div>', unsafe_allow_html=True)
 
-    if st.button("🚀 Fetch Data + Tính Engagement", type="primary"):
-        with st.spinner("Đang fetch metrics..."):
+    if st.button("🚀 Fetch Metrics & Calculate Engagement", type="primary"):
+
+        # Show a random funny message
+        joke = random.choice(FUNNY_MESSAGES)
+        joke_placeholder = st.empty()
+        joke_placeholder.markdown(f'<div class="loading-joke">{joke}</div>', unsafe_allow_html=True)
+
+        with st.spinner("Fetching metrics — hang tight..."):
             results = []
             progress_bar = st.progress(0)
+            status_text  = st.empty()
 
             for idx, link in enumerate(df[link_col].astype(str)):
                 platform = get_platform(link)
+                status_text.markdown(
+                    f'<p style="color:#4A7A5E;font-size:0.82rem;font-weight:500;">'
+                    f'Processing {idx+1} / {len(df)} &nbsp;·&nbsp; {link[:60]}{"…" if len(link)>60 else ""}</p>',
+                    unsafe_allow_html=True
+                )
+
                 row = {
-                    "Original_Link": link,
-                    "Platform": platform,
-                    "Impressions": 0,
-                    "Engagement": 0,
-                    "Likes": 0,
-                    "Retweets_Shares": 0,
-                    "Quotes": 0,
-                    "Bookmarks_Saves": 0,
-                    "Replies_Comments": 0,
-                    "Content": "",
-                    "Error": ""
+                    "Original_Link":     link,
+                    "Platform":          platform,
+                    "Impressions":       0,
+                    "Engagement":        0,
+                    "Likes":             0,
+                    "Retweets_Shares":   0,
+                    "Quotes":            0,
+                    "Bookmarks_Saves":   0,
+                    "Replies_Comments":  0,
+                    "Content":           "",
+                    "Error":             ""
                 }
 
-                if platform == "X/Twitter":
+                if platform == "X / Twitter":
                     tid = extract_tweet_id(link)
                     if tid:
                         data = fetch_x_metrics(tid)
                         row.update({
-                            "Impressions": data["impressions"],
-                            "Likes": data["likes"],
-                            "Retweets_Shares": data["retweets"],
-                            "Quotes": data["quotes"],
-                            "Bookmarks_Saves": data["bookmarks"],
+                            "Impressions":      data["impressions"],
+                            "Likes":            data["likes"],
+                            "Retweets_Shares":  data["retweets"],
+                            "Quotes":           data["quotes"],
+                            "Bookmarks_Saves":  data["bookmarks"],
                             "Replies_Comments": data["replies"],
-                            "Engagement": data["engagement"],
-                            "Content": data["content"],
-                            "Error": data.get("error", "")
+                            "Engagement":       data["engagement"],
+                            "Content":          data["content"],
+                            "Error":            data.get("error", "")
                         })
 
                 results.append(row)
                 progress_bar.progress(min(100, int((idx + 1) / len(df) * 100)))
+
+                # Rotate funny message every 5 posts
+                if (idx + 1) % 5 == 0:
+                    joke_placeholder.markdown(
+                        f'<div class="loading-joke">{random.choice(FUNNY_MESSAGES)}</div>',
+                        unsafe_allow_html=True
+                    )
+
                 time.sleep(1.2)
 
-            result_df = pd.DataFrame(results)
-            
-            # Sắp xếp cột
-            cols = ["Original_Link", "Platform", "Impressions", "Engagement", 
-                    "Likes", "Retweets_Shares", "Quotes", "Bookmarks_Saves", 
-                    "Replies_Comments", "Content", "Error"]
-            result_df = result_df[[c for c in cols if c in result_df.columns]]
+            joke_placeholder.empty()
+            status_text.empty()
 
-            st.subheader("📊 Kết quả")
-            st.dataframe(result_df, use_container_width=True)
+        result_df = pd.DataFrame(results)
+        cols = ["Original_Link","Platform","Impressions","Engagement",
+                "Likes","Retweets_Shares","Quotes","Bookmarks_Saves",
+                "Replies_Comments","Content","Error"]
+        result_df = result_df[[c for c in cols if c in result_df.columns]]
 
-            # Download
-            csv = result_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Tải CSV", csv, f"metrics_{time.strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+        # ── Summary stats ──
+        st.markdown('<div class="section-label">📊 Results</div>', unsafe_allow_html=True)
 
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                result_df.to_excel(writer, index=False)
-            st.download_button("📥 Tải Excel", output.getvalue(), 
-                             f"metrics_{time.strftime('%Y%m%d_%H%M')}.xlsx")
+        x_rows = result_df[result_df["Platform"] == "X / Twitter"]
+        total_impressions = x_rows["Impressions"].sum()
+        total_engagement  = x_rows["Engagement"].sum()
+        total_likes       = x_rows["Likes"].sum()
+        success_count     = len(x_rows[x_rows["Error"] == ""])
 
-st.info("Nếu vẫn bị 0 hết → paste 1-2 link X public mày đang test vào đây tao check giúp ngay.")
+        st.markdown(f"""
+        <div class="stat-row">
+          <div class="stat-pill"><strong>{len(result_df)}</strong>Total Posts</div>
+          <div class="stat-pill"><strong>{success_count}</strong>Fetched OK</div>
+          <div class="stat-pill"><strong>{total_impressions:,}</strong>Total Impressions</div>
+          <div class="stat-pill"><strong>{total_engagement:,}</strong>Total Engagement</div>
+          <div class="stat-pill"><strong>{total_likes:,}</strong>Total Likes</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.dataframe(result_df, use_container_width=True, height=420)
+
+        # ── Per-post detail ──
+        st.markdown('<div class="section-label">🔍 Post Details</div>', unsafe_allow_html=True)
+
+        for _, row in result_df.iterrows():
+            has_error = str(row.get("Error", "")).strip() not in ("", "nan")
+            status_icon = "🔴" if has_error else "✅"
+            label = f"{status_icon} {row['Original_Link'][:80]}{'…' if len(str(row['Original_Link'])) > 80 else ''}"
+
+            with st.expander(label, expanded=False):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Impressions", f"{int(row['Impressions']):,}")
+                c2.metric("Engagement",  f"{int(row['Engagement']):,}")
+                c3.metric("Likes",       f"{int(row['Likes']):,}")
+
+                c4, c5, c6 = st.columns(3)
+                c4.metric("Retweets",  f"{int(row['Retweets_Shares']):,}")
+                c5.metric("Quotes",    f"{int(row['Quotes']):,}")
+                c6.metric("Bookmarks", f"{int(row['Bookmarks_Saves']):,}")
+
+                c7, c8 = st.columns(2)
+                c7.metric("Replies",  f"{int(row['Replies_Comments']):,}")
+                c8.metric("Platform", row["Platform"])
+
+                if str(row.get("Content", "")).strip() not in ("", "nan"):
+                    st.markdown("**Tweet content**")
+                    st.markdown(
+                        f'<div style="background:#F4FBF7;border:1px solid #D1EEE0;border-left:3px solid #3DD68C;'
+                        f'border-radius:8px;padding:12px 16px;font-size:0.88rem;color:#0A2818;line-height:1.6;">'
+                        f'{row["Content"]}</div>',
+                        unsafe_allow_html=True
+                    )
+
+                if has_error:
+                    st.error(f"⚠️ Error: {row['Error']}")
+
+                st.markdown(
+                    f'<a href="{row["Original_Link"]}" target="_blank" '
+                    f'style="font-size:0.8rem;color:#3DD68C;font-weight:600;">↗ Open original post</a>',
+                    unsafe_allow_html=True
+                )
+
+        # ── Downloads ──
+        st.markdown('<div class="section-label">📥 Export</div>', unsafe_allow_html=True)
+        dl1, dl2 = st.columns(2)
+
+        csv_bytes = result_df.to_csv(index=False).encode("utf-8")
+        dl1.download_button(
+            "⬇️ Download CSV",
+            csv_bytes,
+            f"mantle_metrics_{time.strftime('%Y%m%d_%H%M')}.csv",
+            "text/csv"
+        )
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            result_df.to_excel(writer, index=False)
+        dl2.download_button(
+            "⬇️ Download Excel",
+            output.getvalue(),
+            f"mantle_metrics_{time.strftime('%Y%m%d_%H%M')}.xlsx"
+        )
+
+# ====================== FOOTER ======================
+st.markdown("""
+<div style="margin-top:48px; padding-top:20px; border-top:1px solid #D1EEE0;
+            display:flex; justify-content:space-between; align-items:center;
+            color:#4A7A5E; font-size:0.78rem; font-weight:500;">
+  <span>Post Checker · Mantle Internal Tool</span>
+  <span>Supports X / Twitter · More platforms coming soon</span>
+  <span>Issues? Reach out to <strong style="color:#0A2818">Minh Anh</strong></span>
+</div>
+""", unsafe_allow_html=True)
