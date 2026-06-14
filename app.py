@@ -403,65 +403,84 @@ if uploaded_file:
             all_links = df[link_col].astype(str).tolist()
             total = len(all_links)
 
-            for idx, link in enumerate(all_links):
-                link = link.strip()
+            for idx, raw_link in enumerate(all_links):
+                try:
+                    link = str(raw_link).strip()
 
-                # ── Skip invalid / non-URL cells ──
-                if not link or link.lower() in ("nan", "none", "") or not link.startswith("http"):
-                    skipped += 1
-                    # Still carry over the original row data from df
                     orig_row = df.iloc[idx].to_dict()
-                    orig_row["Platform"]         = "Skipped"
-                    orig_row["Impressions"]       = ""
-                    orig_row["Engagement"]        = ""
-                    orig_row["Likes"]             = ""
-                    orig_row["Retweets_Shares"]   = ""
-                    orig_row["Quotes"]            = ""
-                    orig_row["Bookmarks_Saves"]   = ""
-                    orig_row["Replies_Comments"]  = ""
-                    orig_row["Content"]           = ""
-                    orig_row["Error"]             = "Skipped — not a valid URL"
+
+                    # ── Skip invalid / non-URL cells ──
+                    if not link or link.lower() in ("nan", "none", "") or not link.startswith("http"):
+                        skipped += 1
+                        orig_row["Platform"]        = "Skipped"
+                        orig_row["Impressions"]      = ""
+                        orig_row["Engagement"]       = ""
+                        orig_row["Likes"]            = ""
+                        orig_row["Retweets_Shares"]  = ""
+                        orig_row["Quotes"]           = ""
+                        orig_row["Bookmarks_Saves"]  = ""
+                        orig_row["Replies_Comments"] = ""
+                        orig_row["Content"]          = ""
+                        orig_row["Error"]            = "Skipped — not a valid URL"
+                        results.append(orig_row)
+                        progress_bar.progress(min(100, int((idx + 1) / total * 100)))
+                        continue
+
+                    platform = get_platform(link)
+                    status_text.markdown(
+                        f'<p style="color:#4A7A5E;font-size:0.82rem;font-weight:500;">'
+                        f'Processing {idx+1} / {total} &nbsp;·&nbsp; {link[:60]}{"…" if len(link)>60 else ""}</p>',
+                        unsafe_allow_html=True
+                    )
+
+                    orig_row["Platform"]        = platform
+                    orig_row["Impressions"]      = 0
+                    orig_row["Engagement"]       = 0
+                    orig_row["Likes"]            = 0
+                    orig_row["Retweets_Shares"]  = 0
+                    orig_row["Quotes"]           = 0
+                    orig_row["Bookmarks_Saves"]  = 0
+                    orig_row["Replies_Comments"] = 0
+                    orig_row["Content"]          = ""
+                    orig_row["Error"]            = ""
+
+                    if platform == "X/Twitter":
+                        tid = extract_tweet_id(link)
+                        if tid:
+                            metrics = fetch_x_metrics(tid)
+                            orig_row.update({
+                                "Impressions":      metrics["impressions"],
+                                "Likes":            metrics["likes"],
+                                "Retweets_Shares":  metrics["retweets"],
+                                "Quotes":           metrics["quotes"],
+                                "Bookmarks_Saves":  metrics["bookmarks"],
+                                "Replies_Comments": metrics["replies"],
+                                "Engagement":       metrics["engagement"],
+                                "Content":          metrics["content"],
+                                "Error":            metrics.get("error", "")
+                            })
+
                     results.append(orig_row)
-                    progress_bar.progress(min(100, int((idx + 1) / total * 100)))
-                    continue
 
-                platform = get_platform(link)
-                status_text.markdown(
-                    f'<p style="color:#4A7A5E;font-size:0.82rem;font-weight:500;">'
-                    f'Processing {idx+1} / {total} &nbsp;·&nbsp; {link[:60]}{"…" if len(link)>60 else ""}</p>',
-                    unsafe_allow_html=True
-                )
+                except Exception as e:
+                    # Any unexpected error → skip this row silently
+                    skipped += 1
+                    try:
+                        orig_row = df.iloc[idx].to_dict()
+                    except Exception:
+                        orig_row = {}
+                    orig_row["Platform"]        = "Skipped"
+                    orig_row["Impressions"]      = ""
+                    orig_row["Engagement"]       = ""
+                    orig_row["Likes"]            = ""
+                    orig_row["Retweets_Shares"]  = ""
+                    orig_row["Quotes"]           = ""
+                    orig_row["Bookmarks_Saves"]  = ""
+                    orig_row["Replies_Comments"] = ""
+                    orig_row["Content"]          = ""
+                    orig_row["Error"]            = f"Skipped — {str(e)[:80]}"
+                    results.append(orig_row)
 
-                # Start with ALL original columns from the raw file
-                orig_row = df.iloc[idx].to_dict()
-                orig_row["Platform"]         = platform
-                orig_row["Impressions"]       = 0
-                orig_row["Engagement"]        = 0
-                orig_row["Likes"]             = 0
-                orig_row["Retweets_Shares"]   = 0
-                orig_row["Quotes"]            = 0
-                orig_row["Bookmarks_Saves"]   = 0
-                orig_row["Replies_Comments"]  = 0
-                orig_row["Content"]           = ""
-                orig_row["Error"]             = ""
-
-                if platform == "X/Twitter":
-                    tid = extract_tweet_id(link)
-                    if tid:
-                        data = fetch_x_metrics(tid)
-                        orig_row.update({
-                            "Impressions":      data["impressions"],
-                            "Likes":            data["likes"],
-                            "Retweets_Shares":  data["retweets"],
-                            "Quotes":           data["quotes"],
-                            "Bookmarks_Saves":  data["bookmarks"],
-                            "Replies_Comments": data["replies"],
-                            "Engagement":       data["engagement"],
-                            "Content":          data["content"],
-                            "Error":            data.get("error", "")
-                        })
-
-                results.append(orig_row)
                 progress_bar.progress(min(100, int((idx + 1) / total * 100)))
 
                 # Rotate funny message every 5 posts
