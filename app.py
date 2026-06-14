@@ -3,42 +3,12 @@ import pandas as pd
 import re
 import requests
 import time
-import random
 from urllib.parse import urlparse
 from io import BytesIO
 
-# Mantle Brand Colors
-MANTLE_GREEN = "#00D4A5"
-MANTLE_DARK = "#0A1F1C"
-MANTLE_LIGHT = "#F8FFFD"
-
-st.set_page_config(page_title="Post Checker", layout="wide", page_icon="🔥")
-
-# Custom CSS for Mantle branding + light theme
-st.markdown(f"""
-<style>
-    .stApp {{ background-color: {MANTLE_LIGHT}; }}
-    .stButton>button {{ background-color: {MANTLE_GREEN}; color: white; border-radius: 8px; }}
-    h1, h2, h3 {{ color: {MANTLE_DARK}; }}
-    .stDataFrame {{ background-color: white; }}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🔥 Post Checker")
-st.markdown("**Mantle internal developed** • Multi-platform metrics tool")
-
-funny_messages = [
-    "Since this is a free tool, it might take a little longer... like waiting for altseason 😅",
-    "Brewing the metrics... Free version so we use magic instead of paid API ✨",
-    "Scraping the internet like a true degen... Hang tight!",
-    "Free tool = occasional slow loading. Blame X, not us 😂",
-    "Fetching impressions... If it fails, blame Elon, not Minh Anh",
-    "Running on pure Mantle community spirit (and coffee)",
-    "Please wait while the free hamster runs on the wheel...",
-    "This tool is sponsored by: Minh Anh's patience ❤️",
-    "Loading... Rate limited by being free. Worth it though!",
-    "Almost there! Free tools need love too 💚"
-]
+st.set_page_config(page_title="Multi-Platform Post Checker", layout="wide")
+st.title("🔥 Multi-Platform Post Checker [FREE]")
+st.markdown("**Debug mode** • Hỗ trợ X/Twitter chính")
 
 def get_platform(url):
     domain = urlparse(url.lower()).netloc
@@ -58,23 +28,27 @@ def extract_tweet_id(url):
     patterns = [r'/status/(\d+)', r'twitter\.com/[^/]+/status/(\d+)', r'x\.com/[^/]+/status/(\d+)']
     for p in patterns:
         m = re.search(p, url)
-        if m: return m.group(1)
+        if m: 
+            return m.group(1)
     return None
 
 def fetch_x_metrics(tid):
     try:
         url = f"https://api.fxtwitter.com/status/{tid}"
-        headers = {"User-Agent": "Mantle-Post-Checker/1.0"}
+        headers = {"User-Agent": "Mantle-Squad-Tool/1.0"}
         resp = requests.get(url, headers=headers, timeout=12)
+        
         if resp.status_code == 200:
             data = resp.json()
             tweet = data.get("tweet") or {}
+            
             likes = tweet.get("likes", 0)
             retweets = tweet.get("retweets", 0)
             quotes = tweet.get("quotes", 0)
             bookmarks = tweet.get("bookmarks", 0)
             views = tweet.get("views", 0)
             engagement = likes + retweets + quotes + bookmarks
+            
             return {
                 "impressions": views,
                 "likes": likes,
@@ -87,12 +61,20 @@ def fetch_x_metrics(tid):
                 "error": ""
             }
         else:
-            return {"impressions":0, "likes":0, "retweets":0, "quotes":0, "bookmarks":0, "replies":0, "engagement":0, "content":"", "error": f"HTTP {resp.status_code}"}
+            return {
+                "impressions":0, "likes":0, "retweets":0, "quotes":0, 
+                "bookmarks":0, "replies":0, "engagement":0, "content":"", 
+                "error": f"HTTP {resp.status_code}"
+            }
     except Exception as e:
-        return {"impressions":0, "likes":0, "retweets":0, "quotes":0, "bookmarks":0, "replies":0, "engagement":0, "content":"", "error": str(e)[:80]}
+        return {
+            "impressions":0, "likes":0, "retweets":0, "quotes":0, 
+            "bookmarks":0, "replies":0, "engagement":0, "content":"", 
+            "error": str(e)[:100]
+        }
 
-# Upload section
-uploaded_file = st.file_uploader("Upload file containing post links (CSV / Excel / TXT)", 
+# ====================== MAIN APP ======================
+uploaded_file = st.file_uploader("Upload file chứa link (CSV/Excel/TXT)", 
                                 type=["csv", "xlsx", "xls", "txt"])
 
 if uploaded_file:
@@ -104,13 +86,12 @@ if uploaded_file:
         lines = [line.strip() for line in uploaded_file.getvalue().decode("utf-8").splitlines() if line.strip()]
         df = pd.DataFrame({"Link": lines})
 
-    st.success(f"✅ Loaded {len(df)} links successfully")
+    st.success(f"✅ Đã load {len(df)} links")
 
-    link_col = st.selectbox("Select column containing links", df.columns, index=0)
+    link_col = st.selectbox("Chọn cột chứa link", df.columns, index=0)
 
-    if st.button("🚀 Fetch Metrics & Calculate Engagement", type="primary"):
-        random_msg = random.choice(funny_messages)
-        with st.spinner(random_msg):
+    if st.button("🚀 Fetch Data + Tính Engagement", type="primary"):
+        with st.spinner("Đang fetch metrics..."):
             results = []
             progress_bar = st.progress(0)
 
@@ -133,4 +114,42 @@ if uploaded_file:
                 if platform == "X/Twitter":
                     tid = extract_tweet_id(link)
                     if tid:
-                        data = fetch
+                        data = fetch_x_metrics(tid)
+                        row.update({
+                            "Impressions": data["impressions"],
+                            "Likes": data["likes"],
+                            "Retweets_Shares": data["retweets"],
+                            "Quotes": data["quotes"],
+                            "Bookmarks_Saves": data["bookmarks"],
+                            "Replies_Comments": data["replies"],
+                            "Engagement": data["engagement"],
+                            "Content": data["content"],
+                            "Error": data.get("error", "")
+                        })
+
+                results.append(row)
+                progress_bar.progress(min(100, int((idx + 1) / len(df) * 100)))
+                time.sleep(1.2)
+
+            result_df = pd.DataFrame(results)
+            
+            # Sắp xếp cột
+            cols = ["Original_Link", "Platform", "Impressions", "Engagement", 
+                    "Likes", "Retweets_Shares", "Quotes", "Bookmarks_Saves", 
+                    "Replies_Comments", "Content", "Error"]
+            result_df = result_df[[c for c in cols if c in result_df.columns]]
+
+            st.subheader("📊 Kết quả")
+            st.dataframe(result_df, use_container_width=True)
+
+            # Download
+            csv = result_df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Tải CSV", csv, f"metrics_{time.strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                result_df.to_excel(writer, index=False)
+            st.download_button("📥 Tải Excel", output.getvalue(), 
+                             f"metrics_{time.strftime('%Y%m%d_%H%M')}.xlsx")
+
+st.info("Nếu vẫn bị 0 hết → paste 1-2 link X public mày đang test vào đây tao check giúp ngay.")
