@@ -365,13 +365,27 @@ if uploaded_file:
         lines = [l.strip() for l in uploaded_file.getvalue().decode("utf-8").splitlines() if l.strip()]
         df = pd.DataFrame({"Link": lines})
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.success(f"✅ Loaded **{len(df)} rows** from `{uploaded_file.name}`")
-    with col2:
-        link_col = st.selectbox("Column containing links", df.columns, index=0)
+    st.success(f"✅ Loaded **{len(df)} rows** from `{uploaded_file.name}`")
 
-    st.markdown('<div class="section-label">⚙️ Run Analysis</div>', unsafe_allow_html=True)
+    # ── Column selector ──
+    st.markdown('<div class="section-label">⚙️ Select Link Column</div>', unsafe_allow_html=True)
+    col_options = list(df.columns)
+    link_col = st.selectbox(
+        "Which column contains the post links?",
+        col_options,
+        index=0,
+        help="Select the column header that contains your post URLs"
+    )
+
+    # Preview first few values of selected column
+    preview_vals = df[link_col].dropna().astype(str).head(3).tolist()
+    preview_str = " &nbsp;·&nbsp; ".join([v[:50] + ("…" if len(v) > 50 else "") for v in preview_vals])
+    st.markdown(
+        f'<p style="color:#4A7A5E;font-size:0.8rem;margin-top:-8px;">Preview: {preview_str}</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="section-label">🚀 Run Analysis</div>', unsafe_allow_html=True)
 
     if st.button("🚀 Fetch Metrics & Calculate Engagement", type="primary"):
 
@@ -382,36 +396,60 @@ if uploaded_file:
 
         with st.spinner("Fetching metrics — hang tight..."):
             results = []
+            skipped = 0
             progress_bar = st.progress(0)
             status_text  = st.empty()
 
-            for idx, link in enumerate(df[link_col].astype(str)):
+            all_links = df[link_col].astype(str).tolist()
+            total = len(all_links)
+
+            for idx, link in enumerate(all_links):
+                link = link.strip()
+
+                # ── Skip invalid / non-URL cells ──
+                if not link or link.lower() in ("nan", "none", "") or not link.startswith("http"):
+                    skipped += 1
+                    # Still carry over the original row data from df
+                    orig_row = df.iloc[idx].to_dict()
+                    orig_row["Platform"]         = "Skipped"
+                    orig_row["Impressions"]       = ""
+                    orig_row["Engagement"]        = ""
+                    orig_row["Likes"]             = ""
+                    orig_row["Retweets_Shares"]   = ""
+                    orig_row["Quotes"]            = ""
+                    orig_row["Bookmarks_Saves"]   = ""
+                    orig_row["Replies_Comments"]  = ""
+                    orig_row["Content"]           = ""
+                    orig_row["Error"]             = "Skipped — not a valid URL"
+                    results.append(orig_row)
+                    progress_bar.progress(min(100, int((idx + 1) / total * 100)))
+                    continue
+
                 platform = get_platform(link)
                 status_text.markdown(
                     f'<p style="color:#4A7A5E;font-size:0.82rem;font-weight:500;">'
-                    f'Processing {idx+1} / {len(df)} &nbsp;·&nbsp; {link[:60]}{"…" if len(link)>60 else ""}</p>',
+                    f'Processing {idx+1} / {total} &nbsp;·&nbsp; {link[:60]}{"…" if len(link)>60 else ""}</p>',
                     unsafe_allow_html=True
                 )
 
-                row = {
-                    "Original_Link":     link,
-                    "Platform":          platform,
-                    "Impressions":       0,
-                    "Engagement":        0,
-                    "Likes":             0,
-                    "Retweets_Shares":   0,
-                    "Quotes":            0,
-                    "Bookmarks_Saves":   0,
-                    "Replies_Comments":  0,
-                    "Content":           "",
-                    "Error":             ""
-                }
+                # Start with ALL original columns from the raw file
+                orig_row = df.iloc[idx].to_dict()
+                orig_row["Platform"]         = platform
+                orig_row["Impressions"]       = 0
+                orig_row["Engagement"]        = 0
+                orig_row["Likes"]             = 0
+                orig_row["Retweets_Shares"]   = 0
+                orig_row["Quotes"]            = 0
+                orig_row["Bookmarks_Saves"]   = 0
+                orig_row["Replies_Comments"]  = 0
+                orig_row["Content"]           = ""
+                orig_row["Error"]             = ""
 
                 if platform == "X/Twitter":
                     tid = extract_tweet_id(link)
                     if tid:
                         data = fetch_x_metrics(tid)
-                        row.update({
+                        orig_row.update({
                             "Impressions":      data["impressions"],
                             "Likes":            data["likes"],
                             "Retweets_Shares":  data["retweets"],
@@ -423,8 +461,8 @@ if uploaded_file:
                             "Error":            data.get("error", "")
                         })
 
-                results.append(row)
-                progress_bar.progress(min(100, int((idx + 1) / len(df) * 100)))
+                results.append(orig_row)
+                progress_bar.progress(min(100, int((idx + 1) / total * 100)))
 
                 # Rotate funny message every 5 posts
                 if (idx + 1) % 5 == 0:
@@ -439,27 +477,32 @@ if uploaded_file:
             status_text.empty()
 
         result_df = pd.DataFrame(results)
-        cols = ["Original_Link","Platform","Impressions","Engagement",
-                "Likes","Retweets_Shares","Quotes","Bookmarks_Saves",
-                "Replies_Comments","Content","Error"]
-        result_df = result_df[[c for c in cols if c in result_df.columns]]
+
+        # Put original columns first, then appended metric columns at the end
+        orig_cols = list(df.columns)
+        metric_cols = ["Platform","Impressions","Engagement","Likes",
+                       "Retweets_Shares","Quotes","Bookmarks_Saves","Replies_Comments","Content","Error"]
+        final_cols = orig_cols + [c for c in metric_cols if c not in orig_cols]
+        result_df = result_df[[c for c in final_cols if c in result_df.columns]]
 
         # ── Summary stats ──
         st.markdown('<div class="section-label">📊 Results</div>', unsafe_allow_html=True)
 
         x_rows = result_df[result_df["Platform"] == "X/Twitter"]
-        total_impressions = x_rows["Impressions"].sum()
-        total_engagement  = x_rows["Engagement"].sum()
-        total_likes       = x_rows["Likes"].sum()
+        total_impressions = x_rows["Impressions"].replace("", 0).astype(float).sum()
+        total_engagement  = x_rows["Engagement"].replace("", 0).astype(float).sum()
+        total_likes       = x_rows["Likes"].replace("", 0).astype(float).sum()
         success_count     = len(x_rows[x_rows["Error"] == ""])
 
         st.markdown(f"""
         <div class="stat-row">
-          <div class="stat-pill"><strong>{len(result_df)}</strong>Total Posts</div>
+          <div class="stat-pill"><strong>{total}</strong>Total Rows</div>
+          <div class="stat-pill"><strong>{total - skipped}</strong>Links Scanned</div>
+          <div class="stat-pill"><strong>{skipped}</strong>Skipped</div>
           <div class="stat-pill"><strong>{success_count}</strong>Fetched OK</div>
-          <div class="stat-pill"><strong>{total_impressions:,}</strong>Total Impressions</div>
-          <div class="stat-pill"><strong>{total_engagement:,}</strong>Total Engagement</div>
-          <div class="stat-pill"><strong>{total_likes:,}</strong>Total Likes</div>
+          <div class="stat-pill"><strong>{int(total_impressions):,}</strong>Total Impressions</div>
+          <div class="stat-pill"><strong>{int(total_engagement):,}</strong>Total Engagement</div>
+          <div class="stat-pill"><strong>{int(total_likes):,}</strong>Total Likes</div>
         </div>
         """, unsafe_allow_html=True)
 
