@@ -504,38 +504,48 @@ if uploaded_file:
         final_cols = orig_cols + [c for c in metric_cols if c not in orig_cols]
         result_df = result_df[[c for c in final_cols if c in result_df.columns]]
 
-        # ── Summary stats ──
-        st.markdown('<div class="section-label">📊 Results</div>', unsafe_allow_html=True)
+        # ── Save to session state so results persist across reruns ──
+        st.session_state["result_df"] = result_df
+        st.session_state["total"]     = total
+        st.session_state["skipped"]   = skipped
 
-        x_rows = result_df[result_df["Platform"] == "X/Twitter"]
-        total_impressions = x_rows["Impressions"].replace("", 0).astype(float).sum()
-        total_engagement  = x_rows["Engagement"].replace("", 0).astype(float).sum()
-        total_likes       = x_rows["Likes"].replace("", 0).astype(float).sum()
-        success_count     = len(x_rows[x_rows["Error"] == ""])
+# ── Display results from session state (persists after download clicks) ──
+if "result_df" in st.session_state:
+    result_df = st.session_state["result_df"]
+    total     = st.session_state["total"]
+    skipped   = st.session_state["skipped"]
 
-        st.markdown(f"""
-        <div class="stat-row">
-          <div class="stat-pill"><strong>{total}</strong>Total Rows</div>
-          <div class="stat-pill"><strong>{total - skipped}</strong>Links Scanned</div>
-          <div class="stat-pill"><strong>{skipped}</strong>Skipped</div>
-          <div class="stat-pill"><strong>{success_count}</strong>Fetched OK</div>
-          <div class="stat-pill"><strong>{int(total_impressions):,}</strong>Total Impressions</div>
-          <div class="stat-pill"><strong>{int(total_engagement):,}</strong>Total Engagement</div>
-          <div class="stat-pill"><strong>{int(total_likes):,}</strong>Total Likes</div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown('<div class="section-label">📊 Results</div>', unsafe_allow_html=True)
 
-        # ── Excel download (above table) ──
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            result_df.to_excel(writer, index=False)
-        st.download_button(
-            "⬇️ Download Excel",
-            output.getvalue(),
-            f"mantle_metrics_{time.strftime('%Y%m%d_%H%M')}.xlsx"
-        )
+    x_rows = result_df[result_df["Platform"] == "X/Twitter"]
+    total_impressions = x_rows["Impressions"].replace("", 0).astype(float).sum()
+    total_engagement  = x_rows["Engagement"].replace("", 0).astype(float).sum()
+    total_likes       = x_rows["Likes"].replace("", 0).astype(float).sum()
+    success_count     = len(x_rows[x_rows["Error"] == ""])
 
-        st.dataframe(result_df, use_container_width=True)
+    st.markdown(f"""
+    <div class="stat-row">
+      <div class="stat-pill"><strong>{total}</strong>Total Rows</div>
+      <div class="stat-pill"><strong>{total - skipped}</strong>Links Scanned</div>
+      <div class="stat-pill"><strong>{skipped}</strong>Skipped</div>
+      <div class="stat-pill"><strong>{success_count}</strong>Fetched OK</div>
+      <div class="stat-pill"><strong>{int(total_impressions):,}</strong>Total Impressions</div>
+      <div class="stat-pill"><strong>{int(total_engagement):,}</strong>Total Engagement</div>
+      <div class="stat-pill"><strong>{int(total_likes):,}</strong>Total Likes</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Excel download (above table) ──
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        result_df.to_excel(writer, index=False)
+    st.download_button(
+        "⬇️ Download Excel",
+        output.getvalue(),
+        f"mantle_metrics_{time.strftime('%Y%m%d_%H%M')}.xlsx"
+    )
+
+    st.dataframe(result_df, use_container_width=True)
 
 
 # ====================== FOOTER ======================
