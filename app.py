@@ -766,103 +766,126 @@ with tab_fake:
                         ws.write(r, ci, v)
         return out.getvalue()
 
-    # ── Main flow ──
-    if _uploaded:
-        try:
-            _df_in = pd.read_excel(_uploaded)
-        except Exception as e:
-            st.error(f"Không đọc được file: {e}")
-            st.stop()
 
-        # Auto-detect URL column
-        _url_col = None
-        for _col in _df_in.columns:
-            _hits = _df_in[_col].dropna().astype(str).str.contains(
-                r"x\.com.*status|twitter\.com.*status|\d{15,}", regex=True).sum()
-            if _hits > 0:
-                _url_col = _col
-                break
+    # ── Input mode ──
+    _mode = st.radio(
+        "Chọn cách nhập:",
+        ["📋 Paste links trực tiếp", "📂 Upload file Excel"],
+        horizontal=True,
+        key="fake_mode"
+    )
 
-        if _url_col is None:
-            st.error("Không tìm thấy cột chứa tweet URL/ID.")
-        else:
-            st.success(f"Đọc được **{len(_df_in)} rows** · cột URL: **`{_url_col}`**")
+    _df_in   = None
+    _url_col = None
 
-            with st.expander("Preview input"):
-                st.dataframe(_df_in.head(8), use_container_width=True)
+    if _mode == "📋 Paste links trực tiếp":
+        _pasted = st.text_area(
+            "Dán tweet links vào đây (mỗi link 1 dòng)",
+            placeholder="https://x.com/user/status/123456\nhttps://x.com/user/status/789012",
+            height=160,
+            key="fake_paste"
+        )
+        if _pasted and _pasted.strip():
+            _lines   = [l.strip() for l in _pasted.strip().splitlines() if l.strip()]
+            _df_in   = pd.DataFrame({"Tweet URL": _lines})
+            _url_col = "Tweet URL"
+            st.caption(f"Đọc được **{len(_lines)} links**")
 
-            if st.button("🚀 Bắt đầu phân tích", type="primary", key="fake_run"):
-                _rows_out = []
-                _prog     = st.progress(0, text="Đang phân tích...")
-                _status   = st.empty()
-                _total    = len(_df_in)
+    else:
+        if _uploaded:
+            try:
+                _df_in = pd.read_excel(_uploaded)
+            except Exception as e:
+                st.error(f"Không đọc được file: {e}")
+                st.stop()
 
-                for _i, (_, _row) in enumerate(_df_in.iterrows()):
-                    _raw  = str(_row[_url_col]).strip()
-                    _tid  = _extract_tid(_raw)
-                    _extra = {c: _row[c] for c in _df_in.columns if c != _url_col}
+            for _col in _df_in.columns:
+                _hits = _df_in[_col].dropna().astype(str).str.contains(
+                    r"x\.com.*status|twitter\.com.*status|\d{15,}", regex=True).sum()
+                if _hits > 0:
+                    _url_col = _col
+                    break
 
-                    if not _tid:
-                        _rows_out.append({**_extra,
-                            "Tweet URL":"","Views":0,"Likes":0,"Retweets":0,
-                            "Replies":0,"Quotes":0,"Bookmarks":0,
-                            "Like/View":0,"RT/Like":0,"Reply/Like":0,
-                            "Cheating Score":0,"Conclusion":"❌ Invalid URL",
-                            "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
-                            "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
-                        })
-                        _prog.progress((_i+1)/_total)
-                        continue
+            if _url_col is None:
+                st.error("Không tìm thấy cột chứa tweet URL/ID.")
+                _df_in = None
+            else:
+                st.success(f"Đọc được **{len(_df_in)} rows** · cột URL: **`{_url_col}`**")
+                with st.expander("Preview input"):
+                    st.dataframe(_df_in.head(8), use_container_width=True)
 
-                    _status.markdown(f"⏳ **{_i+1}/{_total}** — `{_tid}`")
-                    _m = _fetch_metrics(_tid)
+    # ── Run ──
+    if _df_in is not None and _url_col is not None:
+        if st.button("🚀 Bắt đầu phân tích", type="primary", key="fake_run"):
+            _rows_out = []
+            _prog     = st.progress(0, text="Đang phân tích...")
+            _status   = st.empty()
+            _total    = len(_df_in)
 
-                    if _m["error"]:
-                        _rows_out.append({**_extra,
-                            "Tweet URL": _raw,"Views":0,"Likes":0,"Retweets":0,
-                            "Replies":0,"Quotes":0,"Bookmarks":0,
-                            "Like/View":0,"RT/Like":0,"Reply/Like":0,
-                            "Cheating Score":0,
-                            "Conclusion":f"❌ Error: {_m['error']}",
-                            "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
-                            "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
-                        })
-                    else:
-                        _sc, _verdict, _bd = _calc_score(_m)
-                        _sig = {s["signal"]: s["flag"] for s in _bd}
-                        _rows_out.append({**_extra,
-                            "Tweet URL":   f"https://x.com/i/status/{_tid}",
-                            "Views":       _m["views"],
-                            "Likes":       _m["likes"],
-                            "Retweets":    _m["retweets"],
-                            "Replies":     _m["replies"],
-                            "Quotes":      _m["quotes"],
-                            "Bookmarks":   _m["bookmarks"],
-                            "Like/View":   _m["likes"]    / max(_m["views"],    1),
-                            "RT/Like":     _m["retweets"] / max(_m["likes"],    1),
-                            "Reply/Like":  _m["replies"]  / max(_m["likes"],    1),
-                            "Cheating Score":  _sc,
-                            "Conclusion":      _verdict,
-                            "Signal: Like/View":   _sig.get("Like/View Ratio",  "N/A"),
-                            "Signal: RT/Like":     _sig.get("RT/Like Ratio",    "N/A"),
-                            "Signal: Reply Depth": _sig.get("Reply Depth",      "N/A"),
-                            "Signal: Volume":      _sig.get("Volume Check",     "N/A"),
-                        })
+            for _i, (_, _row) in enumerate(_df_in.iterrows()):
+                _raw   = str(_row[_url_col]).strip()
+                _tid   = _extract_tid(_raw)
+                _extra = {c: _row[c] for c in _df_in.columns if c != _url_col}
 
-                    _prog.progress((_i+1)/_total, text=f"Hoàn thành {_i+1}/{_total}")
-                    import time as _time; _time.sleep(1.0)
+                if not _tid:
+                    _rows_out.append({**_extra,
+                        "Tweet URL":"","Views":0,"Likes":0,"Retweets":0,
+                        "Replies":0,"Quotes":0,"Bookmarks":0,
+                        "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                        "Cheating Score":0,"Conclusion":"❌ Invalid URL",
+                        "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
+                        "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
+                    })
+                    _prog.progress((_i+1)/_total)
+                    continue
 
-                _status.empty()
-                _prog.progress(1.0, text="✅ Xong!")
-                st.session_state["fake_df_out"] = pd.DataFrame(_rows_out)
+                _status.markdown(f"⏳ **{_i+1}/{_total}** — `{_tid}`")
+                _m = _fetch_metrics(_tid)
+
+                if _m["error"]:
+                    _rows_out.append({**_extra,
+                        "Tweet URL":_raw,"Views":0,"Likes":0,"Retweets":0,
+                        "Replies":0,"Quotes":0,"Bookmarks":0,
+                        "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                        "Cheating Score":0,"Conclusion":f"❌ Error: {_m['error']}",
+                        "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
+                        "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
+                    })
+                else:
+                    _sc, _verdict, _bd = _calc_score(_m)
+                    _sig = {s["signal"]: s["flag"] for s in _bd}
+                    _rows_out.append({**_extra,
+                        "Tweet URL":           f"https://x.com/i/status/{_tid}",
+                        "Views":               _m["views"],
+                        "Likes":               _m["likes"],
+                        "Retweets":            _m["retweets"],
+                        "Replies":             _m["replies"],
+                        "Quotes":              _m["quotes"],
+                        "Bookmarks":           _m["bookmarks"],
+                        "Like/View":           _m["likes"]    / max(_m["views"],    1),
+                        "RT/Like":             _m["retweets"] / max(_m["likes"],    1),
+                        "Reply/Like":          _m["replies"]  / max(_m["likes"],    1),
+                        "Cheating Score":      _sc,
+                        "Conclusion":          _verdict,
+                        "Signal: Like/View":   _sig.get("Like/View Ratio", "N/A"),
+                        "Signal: RT/Like":     _sig.get("RT/Like Ratio",   "N/A"),
+                        "Signal: Reply Depth": _sig.get("Reply Depth",     "N/A"),
+                        "Signal: Volume":      _sig.get("Volume Check",    "N/A"),
+                    })
+
+                _prog.progress((_i+1)/_total, text=f"Hoàn thành {_i+1}/{_total}")
+                import time as _time; _time.sleep(1.0)
+
+            _status.empty()
+            _prog.progress(1.0, text="✅ Xong!")
+            st.session_state["fake_df_out"] = pd.DataFrame(_rows_out)
 
     # ── Results ──
     if "fake_df_out" in st.session_state:
-        _df_out = st.session_state["fake_df_out"]
-
-        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING", na=False).sum()
+        _df_out  = st.session_state["fake_df_out"]
+        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING",   na=False).sum()
         _n_sus   = _df_out["Conclusion"].str.contains("SUSPICIOUS", na=False).sum()
-        _n_clean = _df_out["Conclusion"].str.contains("CLEAN", na=False).sum()
+        _n_clean = _df_out["Conclusion"].str.contains("CLEAN",      na=False).sum()
         _valid   = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
         _avg     = int(_valid.mean()) if len(_valid) else 0
 
