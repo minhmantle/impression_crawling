@@ -814,9 +814,11 @@ with tab_fake:
 
         total = round(total / 150 * 100)
 
+        any_triggered = any(s["note"] != "" for s in breakdown)
+
         if total >= 70:
             verdict = "🔴 HEAVY FARMING"
-        elif total >= 35:
+        elif total >= 35 or any_triggered:
             verdict = "🟡 FARMING DETECTED"
         else:
             verdict = "🟢 ORGANIC"
