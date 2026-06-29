@@ -595,14 +595,15 @@ with tab_fake:
     st.markdown("""
     <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
       <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">
-        Upload file Excel chứa tweet links → Tool fetch metrics → Tính
-        <strong style="color:var(--text-primary)">Cheating Score (0–100)</strong> dựa trên
-        ratio analysis. Không cần API key, hoàn toàn free.
+        Phân tích tweet để detect buff tương tác. Không cần API key — hoàn toàn free.<br>
+        <span style="font-size:12px;color:var(--text-muted);">
+          Scoring: Views/Likes Ratio (+30) · Replies vs Likes (+25) · RT/Likes Ratio (+20) · Reply Volume (+15) · Total Engagement (+10)
+        </span>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Template download ──
+    # ── Template ──
     _sample = pd.DataFrame({
         "Team Name": ["Team Alpha", "Team Beta", "Team Gamma"],
         "Tweet URL": [
@@ -620,12 +621,6 @@ with tab_fake:
         key="fake_template_dl"
     )
 
-    _uploaded = st.file_uploader(
-        "Upload file Excel chứa tweet links",
-        type=["xlsx", "xls"],
-        key="fake_uploader"
-    )
-
     # ── Helpers ──
     def _extract_tid(val):
         val = str(val).strip()
@@ -634,7 +629,6 @@ with tab_fake:
         return m.group(1) if m else None
 
     def _fetch_metrics(tid: str) -> dict:
-        """Fetch tweet metrics via fxtwitter (free, no API key)"""
         try:
             resp = _req.get(
                 f"https://api.fxtwitter.com/status/{tid}",
@@ -644,11 +638,11 @@ with tab_fake:
             if resp.status_code == 200:
                 tweet = resp.json().get("tweet") or {}
                 return {
-                    "views":     tweet.get("views", 0) or 0,
-                    "likes":     tweet.get("likes", 0) or 0,
-                    "retweets":  tweet.get("retweets", 0) or 0,
-                    "replies":   tweet.get("replies", 0) or 0,
-                    "quotes":    tweet.get("quotes", 0) or 0,
+                    "views":     tweet.get("views",     0) or 0,
+                    "likes":     tweet.get("likes",     0) or 0,
+                    "retweets":  tweet.get("retweets",  0) or 0,
+                    "replies":   tweet.get("replies",   0) or 0,
+                    "quotes":    tweet.get("quotes",    0) or 0,
                     "bookmarks": tweet.get("bookmarks", 0) or 0,
                     "error": ""
                 }
@@ -659,7 +653,14 @@ with tab_fake:
                     "quotes":0,"bookmarks":0,"error":str(e)[:80]}
 
     def _calc_score(m: dict) -> tuple[int, str, list]:
-        """4-signal scoring, returns (score, verdict, breakdown)"""
+        """
+        Scoring theo bảng của Mantle (max 100):
+        - Views/Likes Ratio > 150:1   → +35  (buff view)
+        - Replies > Likes × 1.5       → +30  (reply farming/pod)
+        - RT > Likes × 3              → +20  (RT farm)
+        - Replies > 300               → +15  (volume reply bất thường)
+        Tổng max = 100
+        """
         views   = m["views"]
         likes   = m["likes"]
         rts     = m["retweets"]
@@ -667,56 +668,60 @@ with tab_fake:
         total   = 0
         breakdown = []
 
-        # Signal 1 — Like/View ratio (max 25)
-        if views > 0 and likes > 0:
-            lvr = likes / views
-            if lvr < 0.002:
-                flag, pts, detail = "HIGH",   25, f"Like/View = {lvr:.3%} — view inflation"
-            elif lvr > 0.15:
-                flag, pts, detail = "MEDIUM", 15, f"Like/View = {lvr:.3%} — unusually high"
-            else:
-                flag, pts, detail = "OK",      0, f"Like/View = {lvr:.3%} — normal"
-        else:
-            flag, pts, detail = "N/A", 0, "Không đủ data"
-        breakdown.append({"signal": "Like/View Ratio", "flag": flag, "pts": pts, "detail": detail})
-        total += pts
-
-        # Signal 2 — RT/Like ratio (max 25)
+        # Signal 1 — Views/Likes Ratio > 150:1 (+35)
         if likes > 0:
-            rtlr = rts / likes
-            if rtlr > 0.8:
-                flag, pts, detail = "HIGH",   25, f"RT/Like = {rtlr:.2%} — RT farming"
-            elif rtlr > 0.4:
-                flag, pts, detail = "MEDIUM", 12, f"RT/Like = {rtlr:.2%} — elevated"
+            vlr = views / likes
+            if vlr > 150:
+                pts, flag = 35, "HIGH"
+                detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — buff view điển hình"
             else:
-                flag, pts, detail = "OK",      0, f"RT/Like = {rtlr:.2%} — normal"
+                pts, flag = 0, "OK"
+                detail = f"Views/Likes = {vlr:.0f}:1 — bình thường"
+        elif views > 0:
+            pts, flag = 35, "HIGH"
+            detail = f"Có {views:,} views nhưng 0 likes — buff view rõ ràng"
         else:
-            flag, pts, detail = "N/A", 0, "Không đủ data"
-        breakdown.append({"signal": "RT/Like Ratio", "flag": flag, "pts": pts, "detail": detail})
+            pts, flag = 0, "N/A"
+            detail = "Không đủ data"
+        breakdown.append({"signal": "Views/Likes Ratio", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 3 — Reply depth (max 25)
-        if likes > 200:
-            rr = replies / max(likes, 1)
-            if rr < 0.005:
-                flag, pts, detail = "HIGH",   25, f"Reply/Like = {rr:.3%} — bots ít reply"
-            elif rr < 0.02:
-                flag, pts, detail = "MEDIUM", 12, f"Reply/Like = {rr:.3%} — thấp"
+        # Signal 2 — Replies > Likes × 1.5 (+30)
+        if likes > 0:
+            if replies > likes * 1.5:
+                pts, flag = 30, "HIGH"
+                detail = f"Replies ({replies:,}) > Likes ({likes:,}) × 1.5 — reply farming/pod"
             else:
-                flag, pts, detail = "OK",      0, f"Reply/Like = {rr:.3%} — normal"
+                pts, flag = 0, "OK"
+                detail = f"Replies ({replies:,}) vs Likes ({likes:,}) — bình thường"
         else:
-            flag, pts, detail = "N/A", 0, "Likes < 200, chưa đủ để đánh giá"
-        breakdown.append({"signal": "Reply Depth", "flag": flag, "pts": pts, "detail": detail})
+            pts, flag = 0, "N/A"
+            detail = "Không đủ data"
+        breakdown.append({"signal": "Replies vs Likes", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 4 — Absolute volume (max 25)
-        if views > 500_000:
-            flag, pts, detail = "HIGH",   25, f"{views:,} views — extreme cho hackathon tweet"
-        elif views > 100_000 or likes > 10_000:
-            flag, pts, detail = "MEDIUM", 12, f"Views={views:,} / Likes={likes:,} — cao bất thường"
+        # Signal 3 — RT > Likes × 3 (+20)
+        if likes > 0:
+            if rts > likes * 3:
+                pts, flag = 20, "HIGH"
+                detail = f"RT ({rts:,}) > Likes ({likes:,}) × 3 — RT farm"
+            else:
+                pts, flag = 0, "OK"
+                detail = f"RT ({rts:,}) vs Likes ({likes:,}) — bình thường"
         else:
-            flag, pts, detail = "OK",      0, "Volume bình thường"
-        breakdown.append({"signal": "Volume Check", "flag": flag, "pts": pts, "detail": detail})
+            pts, flag = 0, "N/A"
+            detail = "Không đủ data"
+        breakdown.append({"signal": "RT/Likes Ratio", "flag": flag, "pts": pts, "detail": detail})
+        total += pts
+
+        # Signal 4 — Reply Volume > 300 (+15)
+        if replies > 300:
+            pts, flag = 15, "HIGH"
+            detail = f"Replies = {replies:,} (> 300) — volume reply bất thường"
+        else:
+            pts, flag = 0, "OK"
+            detail = f"Replies = {replies:,} — bình thường"
+        breakdown.append({"signal": "Reply Volume", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
         total = min(total, 100)
@@ -741,7 +746,7 @@ with tab_fake:
             amb_f = wb.add_format({'bg_color':'#3b2a0f','font_color':'#f59e0b','align':'center','bold':True})
             grn_f = wb.add_format({'bg_color':'#0f2a1a','font_color':'#10b981','align':'center','bold':True})
             num_f = wb.add_format({'num_format':'#,##0','align':'right'})
-            pct_f = wb.add_format({'num_format':'0.00%','align':'right'})
+            pct_f = wb.add_format({'num_format':'0.00','align':'right'})
 
             for ci, cn in enumerate(df_out.columns):
                 ws.write(0, ci, cn, hdr)
@@ -758,14 +763,13 @@ with tab_fake:
                     r = ri + 1
                     if cn == "Cheating Score":   ws.write(r, ci, v, sf)
                     elif cn == "Conclusion":     ws.write(r, ci, v, cf)
-                    elif cn in ("Views","Likes","Retweets","Replies","Quotes","Bookmarks"):
+                    elif cn in ("Views","Likes","Retweets","Replies","Quotes","Bookmarks","Total Engagement"):
                         ws.write(r, ci, v, num_f)
-                    elif cn in ("Like/View","RT/Like","Reply/Like"):
+                    elif cn in ("Views/Likes","RT/Likes","Reply/Likes"):
                         ws.write(r, ci, v, pct_f)
                     else:
                         ws.write(r, ci, v)
         return out.getvalue()
-
 
     # ── Input mode ──
     _mode = st.radio(
@@ -830,11 +834,12 @@ with tab_fake:
                 if not _tid:
                     _rows_out.append({**_extra,
                         "Tweet URL":"","Views":0,"Likes":0,"Retweets":0,
-                        "Replies":0,"Quotes":0,"Bookmarks":0,
-                        "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                        "Replies":0,"Quotes":0,"Bookmarks":0,"Total Engagement":0,
+                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,
                         "Cheating Score":0,"Conclusion":"❌ Invalid URL",
-                        "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
-                        "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
+                        "Signal: Views/Likes":"N/A","Signal: Replies vs Likes":"N/A",
+                        "Signal: RT/Likes":"N/A","Signal: Reply Volume":"N/A",
+                        "Signal: Total Eng":"N/A",
                     })
                     _prog.progress((_i+1)/_total)
                     continue
@@ -845,32 +850,36 @@ with tab_fake:
                 if _m["error"]:
                     _rows_out.append({**_extra,
                         "Tweet URL":_raw,"Views":0,"Likes":0,"Retweets":0,
-                        "Replies":0,"Quotes":0,"Bookmarks":0,
-                        "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                        "Replies":0,"Quotes":0,"Bookmarks":0,"Total Engagement":0,
+                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,
                         "Cheating Score":0,"Conclusion":f"❌ Error: {_m['error']}",
-                        "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
-                        "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
+                        "Signal: Views/Likes":"N/A","Signal: Replies vs Likes":"N/A",
+                        "Signal: RT/Likes":"N/A","Signal: Reply Volume":"N/A",
+                        "Signal: Total Eng":"N/A",
                     })
                 else:
                     _sc, _verdict, _bd = _calc_score(_m)
-                    _sig = {s["signal"]: s["flag"] for s in _bd}
+                    _sig      = {s["signal"]: s["flag"] for s in _bd}
+                    _total_e  = _m["likes"] + _m["retweets"] + _m["replies"] + _m["quotes"]
                     _rows_out.append({**_extra,
-                        "Tweet URL":           f"https://x.com/i/status/{_tid}",
-                        "Views":               _m["views"],
-                        "Likes":               _m["likes"],
-                        "Retweets":            _m["retweets"],
-                        "Replies":             _m["replies"],
-                        "Quotes":              _m["quotes"],
-                        "Bookmarks":           _m["bookmarks"],
-                        "Like/View":           _m["likes"]    / max(_m["views"],    1),
-                        "RT/Like":             _m["retweets"] / max(_m["likes"],    1),
-                        "Reply/Like":          _m["replies"]  / max(_m["likes"],    1),
-                        "Cheating Score":      _sc,
-                        "Conclusion":          _verdict,
-                        "Signal: Like/View":   _sig.get("Like/View Ratio", "N/A"),
-                        "Signal: RT/Like":     _sig.get("RT/Like Ratio",   "N/A"),
-                        "Signal: Reply Depth": _sig.get("Reply Depth",     "N/A"),
-                        "Signal: Volume":      _sig.get("Volume Check",    "N/A"),
+                        "Tweet URL":        f"https://x.com/i/status/{_tid}",
+                        "Views":            _m["views"],
+                        "Likes":            _m["likes"],
+                        "Retweets":         _m["retweets"],
+                        "Replies":          _m["replies"],
+                        "Quotes":           _m["quotes"],
+                        "Bookmarks":        _m["bookmarks"],
+                        "Total Engagement": _total_e,
+                        "Views/Likes":      round(_m["views"] / max(_m["likes"], 1), 1),
+                        "RT/Likes":         round(_m["retweets"] / max(_m["likes"], 1), 2),
+                        "Reply/Likes":      round(_m["replies"] / max(_m["likes"], 1), 2),
+                        "Cheating Score":   _sc,
+                        "Conclusion":       _verdict,
+                        "Signal: Views/Likes":      _sig.get("Views/Likes Ratio",  "N/A"),
+                        "Signal: Replies vs Likes": _sig.get("Replies vs Likes",   "N/A"),
+                        "Signal: RT/Likes":         _sig.get("RT/Likes Ratio",     "N/A"),
+                        "Signal: Reply Volume":     _sig.get("Reply Volume",       "N/A"),
+                        "Signal: Total Eng":        _sig.get("Tổng Engagement",    "N/A"),
                     })
 
                 _prog.progress((_i+1)/_total, text=f"Hoàn thành {_i+1}/{_total}")
