@@ -588,53 +588,19 @@ with tab_metrics:
 
 # ====================== TAB: FAKE ENGAGEMENT DETECTOR ======================
 with tab_fake:
-    import tweepy
-    import io
+    import requests as _req
     import re as _re
-    from analyzer import TweetAnalyzer, FakeScoreEngine
+    import io as _io
 
     st.markdown("""
-    <div style="background:#111118;border:1px solid #1e1e2e;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
-      <div style="font-size:14px;color:#a0a0c0;line-height:1.7;">
-        Upload file Excel chứa tweet links → Tool sẽ phân tích từng tweet qua X API →
-        Export kết quả với <strong style="color:#e2e8f0">Cheating Score (0–100)</strong> và
-        <strong style="color:#e2e8f0">Conclusion</strong>.
-        <br><br>
-        <span style="color:#4a4a6a;font-size:12px;">
-          ⚡ Cần X API Bearer Token (Basic tier $100/mo) để phân tích likers/retweeters.
-          &nbsp;|&nbsp; Điểm càng cao → càng có dấu hiệu buff tương tác.
-        </span>
+    <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">
+        Upload file Excel chứa tweet links → Tool fetch metrics → Tính
+        <strong style="color:var(--text-primary)">Cheating Score (0–100)</strong> dựa trên
+        ratio analysis. Không cần API key, hoàn toàn free.
       </div>
     </div>
     """, unsafe_allow_html=True)
-
-    # ── Load Bearer Token từ Streamlit Secrets ──
-    try:
-        _bearer = st.secrets["BEARER_TOKEN"]
-    except Exception:
-        _bearer = ""
-
-    if not _bearer:
-        st.error("""
-**⚠️ Chưa cấu hình Bearer Token.**
-
-Để dùng tính năng này, vào **Streamlit Cloud → App Settings → Secrets** và thêm:
-
-```toml
-BEARER_TOKEN = "paste_bearer_token_của_mày_vào_đây"
-```
-
-Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập lại lần nào nữa.
-        """)
-        st.stop()
-
-    # ── Config analysis depth ──
-    with st.expander("⚙️ Analysis depth", expanded=False):
-        c1, c2 = st.columns(2)
-        with c1:
-            _max_likers = st.slider("Max likers scan", 50, 300, 100, 50, key="fake_likers")
-        with c2:
-            _max_rts    = st.slider("Max RTs scan",    50, 200, 100, 50, key="fake_rts")
 
     # ── Template download ──
     _sample = pd.DataFrame({
@@ -645,18 +611,17 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
             "https://x.com/example/status/1122334455",
         ]
     })
-    _buf = io.BytesIO()
+    _buf = _io.BytesIO()
     _sample.to_excel(_buf, index=False)
     st.download_button(
         "⬇ Download template Excel",
         _buf.getvalue(),
         "fake_detector_template.xlsx",
-        help="File cần có ít nhất 1 cột chứa tweet URL",
         key="fake_template_dl"
     )
 
     _uploaded = st.file_uploader(
-        "Upload file Excel (chứa tweet links của các đội hackathon)",
+        "Upload file Excel chứa tweet links",
         type=["xlsx", "xls"],
         key="fake_uploader"
     )
@@ -668,31 +633,115 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
         m = _re.search(r"/status/(\d+)", val)
         return m.group(1) if m else None
 
-    def _score_cls(s):
-        if s >= 70: return "#ef4444"
-        if s >= 40: return "#f59e0b"
-        return "#10b981"
+    def _fetch_metrics(tid: str) -> dict:
+        """Fetch tweet metrics via fxtwitter (free, no API key)"""
+        try:
+            resp = _req.get(
+                f"https://api.fxtwitter.com/status/{tid}",
+                headers={"User-Agent": "Mantle-Fake-Detector/1.0"},
+                timeout=12
+            )
+            if resp.status_code == 200:
+                tweet = resp.json().get("tweet") or {}
+                return {
+                    "views":     tweet.get("views", 0) or 0,
+                    "likes":     tweet.get("likes", 0) or 0,
+                    "retweets":  tweet.get("retweets", 0) or 0,
+                    "replies":   tweet.get("replies", 0) or 0,
+                    "quotes":    tweet.get("quotes", 0) or 0,
+                    "bookmarks": tweet.get("bookmarks", 0) or 0,
+                    "error": ""
+                }
+            return {"views":0,"likes":0,"retweets":0,"replies":0,
+                    "quotes":0,"bookmarks":0,"error":f"HTTP {resp.status_code}"}
+        except Exception as e:
+            return {"views":0,"likes":0,"retweets":0,"replies":0,
+                    "quotes":0,"bookmarks":0,"error":str(e)[:80]}
 
-    def _fmt(n):
-        if n is None: return "–"
-        if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
-        if n >= 1_000:     return f"{n/1_000:.1f}K"
-        return str(n)
+    def _calc_score(m: dict) -> tuple[int, str, list]:
+        """4-signal scoring, returns (score, verdict, breakdown)"""
+        views   = m["views"]
+        likes   = m["likes"]
+        rts     = m["retweets"]
+        replies = m["replies"]
+        total   = 0
+        breakdown = []
+
+        # Signal 1 — Like/View ratio (max 25)
+        if views > 0 and likes > 0:
+            lvr = likes / views
+            if lvr < 0.002:
+                flag, pts, detail = "HIGH",   25, f"Like/View = {lvr:.3%} — view inflation"
+            elif lvr > 0.15:
+                flag, pts, detail = "MEDIUM", 15, f"Like/View = {lvr:.3%} — unusually high"
+            else:
+                flag, pts, detail = "OK",      0, f"Like/View = {lvr:.3%} — normal"
+        else:
+            flag, pts, detail = "N/A", 0, "Không đủ data"
+        breakdown.append({"signal": "Like/View Ratio", "flag": flag, "pts": pts, "detail": detail})
+        total += pts
+
+        # Signal 2 — RT/Like ratio (max 25)
+        if likes > 0:
+            rtlr = rts / likes
+            if rtlr > 0.8:
+                flag, pts, detail = "HIGH",   25, f"RT/Like = {rtlr:.2%} — RT farming"
+            elif rtlr > 0.4:
+                flag, pts, detail = "MEDIUM", 12, f"RT/Like = {rtlr:.2%} — elevated"
+            else:
+                flag, pts, detail = "OK",      0, f"RT/Like = {rtlr:.2%} — normal"
+        else:
+            flag, pts, detail = "N/A", 0, "Không đủ data"
+        breakdown.append({"signal": "RT/Like Ratio", "flag": flag, "pts": pts, "detail": detail})
+        total += pts
+
+        # Signal 3 — Reply depth (max 25)
+        if likes > 200:
+            rr = replies / max(likes, 1)
+            if rr < 0.005:
+                flag, pts, detail = "HIGH",   25, f"Reply/Like = {rr:.3%} — bots ít reply"
+            elif rr < 0.02:
+                flag, pts, detail = "MEDIUM", 12, f"Reply/Like = {rr:.3%} — thấp"
+            else:
+                flag, pts, detail = "OK",      0, f"Reply/Like = {rr:.3%} — normal"
+        else:
+            flag, pts, detail = "N/A", 0, "Likes < 200, chưa đủ để đánh giá"
+        breakdown.append({"signal": "Reply Depth", "flag": flag, "pts": pts, "detail": detail})
+        total += pts
+
+        # Signal 4 — Absolute volume (max 25)
+        if views > 500_000:
+            flag, pts, detail = "HIGH",   25, f"{views:,} views — extreme cho hackathon tweet"
+        elif views > 100_000 or likes > 10_000:
+            flag, pts, detail = "MEDIUM", 12, f"Views={views:,} / Likes={likes:,} — cao bất thường"
+        else:
+            flag, pts, detail = "OK",      0, "Volume bình thường"
+        breakdown.append({"signal": "Volume Check", "flag": flag, "pts": pts, "detail": detail})
+        total += pts
+
+        total = min(total, 100)
+
+        if total >= 70:
+            verdict = "🔴 CHEATING DETECTED"
+        elif total >= 40:
+            verdict = "🟡 SUSPICIOUS"
+        else:
+            verdict = "🟢 CLEAN"
+
+        return total, verdict, breakdown
 
     def _build_excel(df_out: pd.DataFrame) -> bytes:
-        import io as _io
         out = _io.BytesIO()
         with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
             df_out.to_excel(writer, index=False, sheet_name="Fake Analysis")
             wb = writer.book
             ws = writer.sheets["Fake Analysis"]
-            hdr = wb.add_format({'bold': True, 'bg_color': '#0a0a14', 'font_color': '#7c3aed',
-                                  'border': 1, 'align': 'center'})
-            red_f   = wb.add_format({'bg_color': '#3b0f0f', 'font_color': '#ef4444', 'align': 'center', 'bold': True})
-            amber_f = wb.add_format({'bg_color': '#3b2a0f', 'font_color': '#f59e0b', 'align': 'center', 'bold': True})
-            green_f = wb.add_format({'bg_color': '#0f2a1a', 'font_color': '#10b981', 'align': 'center', 'bold': True})
-            num_f   = wb.add_format({'num_format': '#,##0', 'align': 'right'})
-            pct_f   = wb.add_format({'num_format': '0.00%', 'align': 'right'})
+            hdr   = wb.add_format({'bold':True,'bg_color':'#0a0a14','font_color':'#7c3aed','border':1,'align':'center'})
+            red_f = wb.add_format({'bg_color':'#3b0f0f','font_color':'#ef4444','align':'center','bold':True})
+            amb_f = wb.add_format({'bg_color':'#3b2a0f','font_color':'#f59e0b','align':'center','bold':True})
+            grn_f = wb.add_format({'bg_color':'#0f2a1a','font_color':'#10b981','align':'center','bold':True})
+            num_f = wb.add_format({'num_format':'#,##0','align':'right'})
+            pct_f = wb.add_format({'num_format':'0.00%','align':'right'})
 
             for ci, cn in enumerate(df_out.columns):
                 ws.write(0, ci, cn, hdr)
@@ -701,23 +750,24 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
             for ri, row in df_out.iterrows():
                 sc   = row.get("Cheating Score", 0) or 0
                 conc = str(row.get("Conclusion", ""))
-                sf   = red_f if sc >= 70 else amber_f if sc >= 40 else green_f
-                cf   = red_f if "CHEATING" in conc else amber_f if "SUSPICIOUS" in conc else green_f
+                sf   = red_f if sc >= 70 else amb_f if sc >= 40 else grn_f
+                cf   = red_f if "CHEATING" in conc else amb_f if "SUSPICIOUS" in conc else grn_f
 
                 for ci, cn in enumerate(df_out.columns):
                     v = row[cn]
                     r = ri + 1
-                    if cn == "Cheating Score":     ws.write(r, ci, v, sf)
-                    elif cn == "Conclusion":       ws.write(r, ci, v, cf)
-                    elif cn in ("Views","Likes","Retweets","Replies","Accts Checked"):
+                    if cn == "Cheating Score":   ws.write(r, ci, v, sf)
+                    elif cn == "Conclusion":     ws.write(r, ci, v, cf)
+                    elif cn in ("Views","Likes","Retweets","Replies","Quotes","Bookmarks"):
                         ws.write(r, ci, v, num_f)
-                    elif cn in ("Like/View","RT/Like","Reply/Like","Suspect Accts %"):
+                    elif cn in ("Like/View","RT/Like","Reply/Like"):
                         ws.write(r, ci, v, pct_f)
                     else:
                         ws.write(r, ci, v)
         return out.getvalue()
 
-    if _uploaded and _bearer:
+    # ── Main flow ──
+    if _uploaded:
         try:
             _df_in = pd.read_excel(_uploaded)
         except Exception as e:
@@ -734,21 +784,14 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
                 break
 
         if _url_col is None:
-            st.error("Không tìm thấy cột chứa tweet URL/ID. Đảm bảo file có cột chứa link x.com hoặc tweet ID.")
+            st.error("Không tìm thấy cột chứa tweet URL/ID.")
         else:
             st.success(f"Đọc được **{len(_df_in)} rows** · cột URL: **`{_url_col}`**")
+
             with st.expander("Preview input"):
                 st.dataframe(_df_in.head(8), use_container_width=True)
 
-            if st.button("🚀 Bắt đầu phân tích Fake Engagement", type="primary", key="fake_run"):
-                try:
-                    _client = tweepy.Client(bearer_token=_bearer, wait_on_rate_limit=True)
-                except Exception as e:
-                    st.error(f"Không kết nối X API: {e}")
-                    st.stop()
-
-                _analyzer = TweetAnalyzer(_client)
-                _engine   = FakeScoreEngine()
+            if st.button("🚀 Bắt đầu phân tích", type="primary", key="fake_run"):
                 _rows_out = []
                 _prog     = st.progress(0, text="Đang phân tích...")
                 _status   = st.empty()
@@ -761,99 +804,89 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
 
                     if not _tid:
                         _rows_out.append({**_extra,
-                            "Tweet URL":"", "Views":None, "Likes":None, "Retweets":None,
-                            "Replies":None, "Like/View":None, "RT/Like":None, "Reply/Like":None,
-                            "Suspect Accts %":None, "Accts Checked":0,
-                            "Cheating Score":0, "Conclusion":"❌ Invalid URL",
-                            "Signal: Like/View":"N/A", "Signal: RT/Like":"N/A",
-                            "Signal: Reply Depth":"N/A", "Signal: Acct Quality":"N/A",
-                            "Signal: Volume":"N/A",
+                            "Tweet URL":"","Views":0,"Likes":0,"Retweets":0,
+                            "Replies":0,"Quotes":0,"Bookmarks":0,
+                            "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                            "Cheating Score":0,"Conclusion":"❌ Invalid URL",
+                            "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
+                            "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
                         })
-                        _prog.progress((_i+1)/_total, text=f"[{_i+1}/{_total}] Skipped — invalid")
+                        _prog.progress((_i+1)/_total)
                         continue
 
                     _status.markdown(f"⏳ **{_i+1}/{_total}** — `{_tid}`")
-                    try:
-                        _res = _analyzer.analyze(_tid, _max_likers, _max_rts)
-                        if _res is None:
-                            raise Exception("Tweet not found")
-                        _sig = _engine.score(_res)
-                        _m   = _res["metrics"]
-                        _sc  = _sig["total_score"]
-                        _sig_map = {s["name"]: s["flag"] for s in _sig["breakdown"]}
+                    _m = _fetch_metrics(_tid)
+
+                    if _m["error"]:
                         _rows_out.append({**_extra,
-                            "Tweet URL": f"https://x.com/i/status/{_tid}",
-                            "Views":     _m.get("impression_count"),
-                            "Likes":     _m.get("like_count"),
-                            "Retweets":  _m.get("retweet_count"),
-                            "Replies":   _m.get("reply_count"),
-                            "Like/View": _m.get("like_count",0) / max(_m.get("impression_count",1),1),
-                            "RT/Like":   _m.get("retweet_count",0) / max(_m.get("like_count",1),1),
-                            "Reply/Like": _m.get("reply_count",0) / max(_m.get("like_count",1),1),
-                            "Suspect Accts %": _res.get("bot_account_pct", 0),
-                            "Accts Checked":   _res.get("analyzed_users", 0),
-                            "Cheating Score":  _sc,
-                            "Conclusion":      _sig["verdict"],
-                            "Signal: Like/View":    _sig_map.get("Like / View Ratio", "N/A"),
-                            "Signal: RT/Like":      _sig_map.get("Retweet / Like Ratio", "N/A"),
-                            "Signal: Reply Depth":  _sig_map.get("Reply Engagement Depth", "N/A"),
-                            "Signal: Acct Quality": _sig_map.get("Engager Account Quality", "N/A"),
-                            "Signal: Volume":       _sig_map.get("Absolute Volume Check", "N/A"),
-                        })
-                    except Exception as _e:
-                        _rows_out.append({**_extra,
-                            "Tweet URL": _raw, "Views":None, "Likes":None,
-                            "Retweets":None, "Replies":None,
-                            "Like/View":None, "RT/Like":None, "Reply/Like":None,
-                            "Suspect Accts %":None, "Accts Checked":0,
-                            "Cheating Score":0, "Conclusion":f"❌ Error: {str(_e)[:60]}",
+                            "Tweet URL": _raw,"Views":0,"Likes":0,"Retweets":0,
+                            "Replies":0,"Quotes":0,"Bookmarks":0,
+                            "Like/View":0,"RT/Like":0,"Reply/Like":0,
+                            "Cheating Score":0,
+                            "Conclusion":f"❌ Error: {_m['error']}",
                             "Signal: Like/View":"N/A","Signal: RT/Like":"N/A",
-                            "Signal: Reply Depth":"N/A","Signal: Acct Quality":"N/A",
-                            "Signal: Volume":"N/A",
+                            "Signal: Reply Depth":"N/A","Signal: Volume":"N/A",
+                        })
+                    else:
+                        _sc, _verdict, _bd = _calc_score(_m)
+                        _sig = {s["signal"]: s["flag"] for s in _bd}
+                        _rows_out.append({**_extra,
+                            "Tweet URL":   f"https://x.com/i/status/{_tid}",
+                            "Views":       _m["views"],
+                            "Likes":       _m["likes"],
+                            "Retweets":    _m["retweets"],
+                            "Replies":     _m["replies"],
+                            "Quotes":      _m["quotes"],
+                            "Bookmarks":   _m["bookmarks"],
+                            "Like/View":   _m["likes"]    / max(_m["views"],    1),
+                            "RT/Like":     _m["retweets"] / max(_m["likes"],    1),
+                            "Reply/Like":  _m["replies"]  / max(_m["likes"],    1),
+                            "Cheating Score":  _sc,
+                            "Conclusion":      _verdict,
+                            "Signal: Like/View":   _sig.get("Like/View Ratio",  "N/A"),
+                            "Signal: RT/Like":     _sig.get("RT/Like Ratio",    "N/A"),
+                            "Signal: Reply Depth": _sig.get("Reply Depth",      "N/A"),
+                            "Signal: Volume":      _sig.get("Volume Check",     "N/A"),
                         })
 
                     _prog.progress((_i+1)/_total, text=f"Hoàn thành {_i+1}/{_total}")
-                    import time as _time; _time.sleep(0.5)
+                    import time as _time; _time.sleep(1.0)
 
                 _status.empty()
                 _prog.progress(1.0, text="✅ Xong!")
+                st.session_state["fake_df_out"] = pd.DataFrame(_rows_out)
 
-                _df_out = pd.DataFrame(_rows_out)
-                st.session_state["fake_df_out"] = _df_out
-
-
-
-    # ── Display results ──
+    # ── Results ──
     if "fake_df_out" in st.session_state:
         _df_out = st.session_state["fake_df_out"]
 
-        _n_cheat  = _df_out["Conclusion"].str.contains("CHEATING", na=False).sum()
-        _n_sus    = _df_out["Conclusion"].str.contains("SUSPICIOUS", na=False).sum()
-        _n_clean  = _df_out["Conclusion"].str.contains("CLEAN", na=False).sum()
-        _avg      = int(_df_out["Cheating Score"].replace(0, None).dropna().mean()) if len(_df_out) else 0
+        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING", na=False).sum()
+        _n_sus   = _df_out["Conclusion"].str.contains("SUSPICIOUS", na=False).sum()
+        _n_clean = _df_out["Conclusion"].str.contains("CLEAN", na=False).sum()
+        _valid   = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
+        _avg     = int(_valid.mean()) if len(_valid) else 0
 
         st.markdown(f"""
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;">
-          <div style="background:#111118;border:1px solid #1e1e2e;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#ef4444;">{_n_cheat}</div>
-            <div style="font-size:11px;color:#4a4a6a;text-transform:uppercase;">🔴 Cheating</div>
+          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
+            <div style="font-size:24px;font-weight:500;color:var(--text-danger);">{_n_cheat}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🔴 Cheating</div>
           </div>
-          <div style="background:#111118;border:1px solid #1e1e2e;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#f59e0b;">{_n_sus}</div>
-            <div style="font-size:11px;color:#4a4a6a;text-transform:uppercase;">🟡 Suspicious</div>
+          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
+            <div style="font-size:24px;font-weight:500;color:var(--text-warning);">{_n_sus}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Suspicious</div>
           </div>
-          <div style="background:#111118;border:1px solid #1e1e2e;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#10b981;">{_n_clean}</div>
-            <div style="font-size:11px;color:#4a4a6a;text-transform:uppercase;">🟢 Clean</div>
+          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
+            <div style="font-size:24px;font-weight:500;color:var(--text-success);">{_n_clean}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟢 Clean</div>
           </div>
-          <div style="background:#111118;border:1px solid #1e1e2e;border-radius:10px;padding:16px;">
-            <div style="font-size:28px;font-weight:700;color:#7c3aed;">{_avg}</div>
-            <div style="font-size:11px;color:#4a4a6a;text-transform:uppercase;">Avg Score</div>
+          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
+            <div style="font-size:24px;font-weight:500;color:var(--text-accent);">{_avg}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">Avg Score</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Export Excel
         _excel = _build_excel(_df_out)
         st.download_button(
             "⬇ Export kết quả ra Excel",
@@ -866,7 +899,6 @@ Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập l�
         )
 
         st.dataframe(_df_out, use_container_width=True)
-
 
 # ====================== FOOTER ======================
 st.markdown("""
