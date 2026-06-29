@@ -595,21 +595,21 @@ with tab_fake:
     st.markdown("""
     <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
       <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">
-        Phân tích tweet để detect buff tương tác.<br>
+        Analyze tweets to detect fake/farmed engagement. Fully free — no API key required for basic signals.<br>
         <span style="font-size:12px;color:var(--text-muted);">
-          Scoring: Views/Likes (+30) · Replies vs Likes (+25) · RT vs Likes (+20) · Reply Volume (+15) · Bot Replies (+20) · Total Eng thấp (+10) — Max 100
+          Scoring: Views/Likes (+30) · Replies vs Likes (+25) · RT vs Likes (+20) · Reply Volume (+15) · Bot Replies (+20) · Low Total Eng (+10) — Max 100
         </span>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Bearer Token (optional — chỉ cần cho bot reply check) ──
+    # ── Bearer Token (optional) ──
     try:
         _bearer = st.secrets["BEARER_TOKEN"]
-        st.caption("🔐 Bearer Token loaded — Bot Reply Check: ✅ bật")
+        st.caption("🔐 Bearer Token loaded — Bot Reply Check: enabled")
     except Exception:
         _bearer = ""
-        st.caption("ℹ️ Không có Bearer Token — Bot Reply Check tắt, các signals khác vẫn chạy bình thường.")
+        st.caption("ℹ️ No Bearer Token — Bot Reply Check disabled. Other signals still run normally.")
 
     # ── Template ──
     _sample = pd.DataFrame({
@@ -623,7 +623,7 @@ with tab_fake:
     _buf = _io.BytesIO()
     _sample.to_excel(_buf, index=False)
     st.download_button(
-        "⬇ Download template Excel",
+        "⬇ Download Excel template",
         _buf.getvalue(),
         "fake_detector_template.xlsx",
         key="fake_template_dl"
@@ -631,15 +631,12 @@ with tab_fake:
 
     # ── Helpers ──
     def _extract_tid(val):
-        val = str(val).strip()
-        # handle URLs with query params
-        val = val.split("?")[0]
+        val = str(val).strip().split("?")[0]
         if val.isdigit(): return val
         m = _re.search(r"/status/(\d+)", val)
         return m.group(1) if m else None
 
     def _fetch_metrics(tid: str) -> dict:
-        """Fetch via fxtwitter — free, no API key"""
         try:
             resp = _req.get(
                 f"https://api.fxtwitter.com/status/{tid}",
@@ -664,56 +661,44 @@ with tab_fake:
                     "quotes":0,"bookmarks":0,"error":str(e)[:80]}
 
     def _check_bot_replies(tid: str, bearer: str) -> tuple[float, int, int]:
-        """
-        Fetch up to 20 replies, check generic/bot ratio.
-        Returns (generic_ratio, generic_count, total_checked)
-        """
         if not bearer:
             return 0.0, 0, 0
         try:
-            url = f"https://api.twitter.com/2/tweets/search/recent"
-            params = {
-                "query": f"conversation_id:{tid}",
-                "max_results": 20,
-                "tweet.fields": "text"
-            }
-            headers = {"Authorization": f"Bearer {bearer}"}
-            r = _req.get(url, headers=headers, params=params, timeout=12)
+            r = _req.get(
+                "https://api.twitter.com/2/tweets/search/recent",
+                headers={"Authorization": f"Bearer {bearer}"},
+                params={"query": f"conversation_id:{tid}", "max_results": 20, "tweet.fields": "text"},
+                timeout=12
+            )
             if r.status_code != 200:
                 return 0.0, 0, 0
-            replies_data = r.json().get("data", [])
-            if not replies_data:
+            data = r.json().get("data", [])
+            if not data:
                 return 0.0, 0, 0
-
-            BOT_KEYWORDS = ["good","bullish","great","nice","lfg","moon","congrats",
-                            "amazing","awesome","lets go","let's go","gm","wagmi",
-                            "based","dope","fire","huge","massive"]
-            BOT_EMOJIS   = ["🔥","👍","🚀","💯","🙌","❤️","😍","👏","💪","🤝"]
-
-            generic = 0
-            for rep in replies_data:
-                text = rep.get("text", "").lower().strip()
-                is_short   = len(text) < 40
-                has_kw     = any(w in text for w in BOT_KEYWORDS)
-                has_emoji  = any(e in text for e in BOT_EMOJIS)
-                if is_short or has_kw or has_emoji:
-                    generic += 1
-
-            total = len(replies_data)
-            return generic / total, generic, total
+            BOT_KW    = ["good","bullish","great","nice","lfg","moon","congrats","amazing",
+                         "awesome","lets go","let's go","gm","wagmi","based","dope","fire",
+                         "huge","massive"]
+            BOT_EMOJI = ["🔥","👍","🚀","💯","🙌","❤️","😍","👏","💪","🤝"]
+            generic   = sum(
+                1 for rep in data
+                if len(rep.get("text","").strip()) < 40
+                or any(w in rep.get("text","").lower() for w in BOT_KW)
+                or any(e in rep.get("text","") for e in BOT_EMOJI)
+            )
+            return generic / len(data), generic, len(data)
         except Exception:
             return 0.0, 0, 0
 
     def _calc_score(m: dict, tid: str, bearer: str) -> tuple[int, str, list]:
         """
-        Scoring theo bảng Mantle (max 100):
-        - Views/Likes > 150:1                      → +30
-        - Replies > Likes × 1.5                    → +25
-        - RT > Likes × 3                           → +20
-        - Replies > 300                            → +15
-        - Bot/generic replies > 45%                → +20 (cần Bearer)
-        - Total eng < 300 nhưng views cao (>5000)  → +10
-        Threshold: ≥70 Cheating, 45-69 Có farm, <45 Organic
+        Scoring (max 100):
+        - Views/Likes > 150:1                     → +30
+        - Replies > Likes × 1.5                   → +25
+        - RT > Likes × 3                          → +20
+        - Replies > 300                           → +15
+        - Bot/generic replies > 45%               → +20 (requires Bearer)
+        - Total eng < 300 but views > 5000        → +10
+        Threshold: ≥70 Cheating, 45-69 Suspicious, <45 Organic
         """
         views     = m["views"]
         likes     = m["likes"]
@@ -729,16 +714,16 @@ with tab_fake:
             vlr = views / likes
             if vlr > 150:
                 pts, flag = 30, "HIGH"
-                detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — buff view điển hình"
+                detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — view inflation detected"
             else:
                 pts, flag = 0, "OK"
-                detail = f"Views/Likes = {vlr:.0f}:1 — bình thường"
+                detail = f"Views/Likes = {vlr:.0f}:1 — normal"
         elif views > 0:
             pts, flag = 30, "HIGH"
-            detail = f"Có {views:,} views nhưng 0 likes — buff view rõ ràng"
+            detail = f"{views:,} views but 0 likes — clear view farming"
         else:
             pts, flag = 0, "N/A"
-            detail = "Không đủ data"
+            detail = "Insufficient data"
         breakdown.append({"signal": "Views/Likes Ratio", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
@@ -749,10 +734,10 @@ with tab_fake:
                 detail = f"Replies ({replies:,}) > Likes ({likes:,}) × 1.5 — reply farming/pod"
             else:
                 pts, flag = 0, "OK"
-                detail = f"Replies ({replies:,}) vs Likes ({likes:,}) — bình thường"
+                detail = f"Replies ({replies:,}) vs Likes ({likes:,}) — normal"
         else:
             pts, flag = 0, "N/A"
-            detail = "Không đủ data"
+            detail = "Insufficient data"
         breakdown.append({"signal": "Replies vs Likes", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
@@ -760,52 +745,52 @@ with tab_fake:
         if likes > 0:
             if rts > likes * 3:
                 pts, flag = 20, "HIGH"
-                detail = f"RT ({rts:,}) > Likes ({likes:,}) × 3 — RT farm"
+                detail = f"RT ({rts:,}) > Likes ({likes:,}) × 3 — RT farming"
             else:
                 pts, flag = 0, "OK"
-                detail = f"RT ({rts:,}) vs Likes ({likes:,}) — bình thường"
+                detail = f"RT ({rts:,}) vs Likes ({likes:,}) — normal"
         else:
             pts, flag = 0, "N/A"
-            detail = "Không đủ data"
+            detail = "Insufficient data"
         breakdown.append({"signal": "RT vs Likes", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 4 — Reply Volume > 300 (+15)
         if replies > 300:
             pts, flag = 15, "HIGH"
-            detail = f"Replies = {replies:,} (> 300) — volume reply bất thường"
+            detail = f"Replies = {replies:,} (> 300) — abnormally high reply volume"
         else:
             pts, flag = 0, "OK"
-            detail = f"Replies = {replies:,} — bình thường"
+            detail = f"Replies = {replies:,} — normal"
         breakdown.append({"signal": "Reply Volume", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 5 — Bot/generic replies > 45% (+20, cần Bearer Token)
+        # Signal 5 — Bot/generic replies > 45% (+20)
         if bearer and replies > 0:
             _ratio, _generic, _checked = _check_bot_replies(tid, bearer)
             if _checked == 0:
                 pts, flag = 0, "N/A"
-                detail = "Không fetch được replies"
+                detail = "Could not fetch replies"
             elif _ratio > 0.45:
                 pts, flag = 20, "HIGH"
                 detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked)"
             else:
                 pts, flag = 0, "OK"
-                detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked) — bình thường"
+                detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked) — normal"
         else:
             pts, flag = 0, "N/A"
-            detail = "Cần Bearer Token để check" if not bearer else "Post không có replies"
+            detail = "Requires Bearer Token" if not bearer else "No replies to check"
         breakdown.append({"signal": "Bot Replies", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 6 — Total eng < 300 nhưng views cao > 5000 (+10)
+        # Signal 6 — Total eng < 300 but views > 5000 (+10)
         if total_eng < 300 and views > 5000:
             pts, flag = 10, "HIGH"
-            detail = f"Total eng = {total_eng:,} (< 300) nhưng views = {views:,} — chỉ view, không tương tác thật"
+            detail = f"Total engagement = {total_eng:,} (< 300) but views = {views:,} — view-only, no real interaction"
         else:
             pts, flag = 0, "OK"
-            detail = f"Total eng = {total_eng:,} / Views = {views:,} — bình thường"
-        breakdown.append({"signal": "Total Engagement thấp", "flag": flag, "pts": pts, "detail": detail})
+            detail = f"Total engagement = {total_eng:,} / Views = {views:,} — normal"
+        breakdown.append({"signal": "Low Total Engagement", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
         total = min(total, 100)
@@ -813,7 +798,7 @@ with tab_fake:
         if total >= 70:
             verdict = "🔴 CHEATING DETECTED"
         elif total >= 45:
-            verdict = "🟡 CÓ FARM"
+            verdict = "🟡 SUSPICIOUS"
         else:
             verdict = "🟢 ORGANIC"
 
@@ -831,22 +816,19 @@ with tab_fake:
             grn_f = wb.add_format({'bg_color':'#0f2a1a','font_color':'#10b981','align':'center','bold':True})
             num_f = wb.add_format({'num_format':'#,##0','align':'right'})
             rat_f = wb.add_format({'num_format':'0.0','align':'right'})
-
             for ci, cn in enumerate(df_out.columns):
                 ws.write(0, ci, cn, hdr)
                 ws.set_column(ci, ci, max(14, len(str(cn)) + 4))
-
             for ri, row in df_out.iterrows():
                 sc   = row.get("Cheating Score", 0) or 0
                 conc = str(row.get("Conclusion", ""))
-                sf   = red_f if sc >= 70 else amb_f if sc >= 40 else grn_f
+                sf   = red_f if sc >= 70 else amb_f if sc >= 45 else grn_f
                 cf   = red_f if "CHEATING" in conc else amb_f if "SUSPICIOUS" in conc else grn_f
                 for ci, cn in enumerate(df_out.columns):
-                    v = row[cn]
-                    r = ri + 1
+                    v = row[cn]; r = ri + 1
                     if cn == "Cheating Score":   ws.write(r, ci, v, sf)
                     elif cn == "Conclusion":     ws.write(r, ci, v, cf)
-                    elif cn in ("Views","Likes","Retweets","Replies","Quotes","Bookmarks"):
+                    elif cn in ("Views","Likes","Retweets","Replies","Quotes","Bookmarks","Total Engagement"):
                         ws.write(r, ci, v, num_f)
                     elif cn in ("Views/Likes","RT/Likes","Reply/Likes"):
                         ws.write(r, ci, v, rat_f)
@@ -856,8 +838,8 @@ with tab_fake:
 
     # ── Input mode ──
     _mode = st.radio(
-        "Chọn cách nhập:",
-        ["📋 Paste links trực tiếp", "📂 Upload file Excel"],
+        "Input method:",
+        ["📋 Paste links directly", "📂 Upload Excel file"],
         horizontal=True,
         key="fake_mode"
     )
@@ -865,9 +847,9 @@ with tab_fake:
     _df_in   = None
     _url_col = None
 
-    if _mode == "📋 Paste links trực tiếp":
+    if _mode == "📋 Paste links directly":
         _pasted = st.text_area(
-            "Dán tweet links vào đây (mỗi link 1 dòng)",
+            "Paste tweet links here (one per line)",
             placeholder="https://x.com/user/status/123456\nhttps://x.com/user/status/789012",
             height=160,
             key="fake_paste"
@@ -876,14 +858,19 @@ with tab_fake:
             _lines   = [l.strip() for l in _pasted.strip().splitlines() if l.strip()]
             _df_in   = pd.DataFrame({"Tweet URL": _lines})
             _url_col = "Tweet URL"
-            st.caption(f"Đọc được **{len(_lines)} links**")
+            st.caption(f"**{len(_lines)} links** detected")
 
     else:
-        if _uploaded:
+        _uploaded_fake = st.file_uploader(
+            "Upload Excel file containing tweet links",
+            type=["xlsx", "xls"],
+            key="fake_uploader"
+        )
+        if _uploaded_fake:
             try:
-                _df_in = pd.read_excel(_uploaded)
+                _df_in = pd.read_excel(_uploaded_fake)
             except Exception as e:
-                st.error(f"Không đọc được file: {e}")
+                st.error(f"Could not read file: {e}")
                 st.stop()
 
             for _col in _df_in.columns:
@@ -894,18 +881,18 @@ with tab_fake:
                     break
 
             if _url_col is None:
-                st.error("Không tìm thấy cột chứa tweet URL/ID.")
+                st.error("No tweet URL column found. Make sure the file has a column with x.com links.")
                 _df_in = None
             else:
-                st.success(f"Đọc được **{len(_df_in)} rows** · cột URL: **`{_url_col}`**")
+                st.success(f"**{len(_df_in)} rows** loaded · URL column: **`{_url_col}`**")
                 with st.expander("Preview input"):
                     st.dataframe(_df_in.head(8), use_container_width=True)
 
     # ── Run ──
     if _df_in is not None and _url_col is not None:
-        if st.button("🚀 Bắt đầu phân tích", type="primary", key="fake_run"):
+        if st.button("🚀 Start Analysis", type="primary", key="fake_run"):
             _rows_out = []
-            _prog     = st.progress(0, text="Đang phân tích...")
+            _prog     = st.progress(0, text="Analyzing...")
             _status   = st.empty()
             _total    = len(_df_in)
 
@@ -916,36 +903,38 @@ with tab_fake:
 
                 if not _tid:
                     _rows_out.append({**_extra,
-                        "Tweet URL":"","Views":0,"Likes":0,"Retweets":0,
-                        "Replies":0,"Quotes":0,"Bookmarks":0,
-                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,"Total Engagement":0,
+                        "Tweet URL": _raw,
+                        "Views":0,"Likes":0,"Retweets":0,"Replies":0,
+                        "Quotes":0,"Bookmarks":0,"Total Engagement":0,
+                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,
                         "Cheating Score":0,"Conclusion":"❌ Invalid URL",
                         "Signal: Views/Likes":"N/A","Signal: Replies vs Likes":"N/A",
                         "Signal: RT vs Likes":"N/A","Signal: Reply Volume":"N/A",
-                        "Signal: Bot Replies":"N/A","Signal: Total Eng":"N/A",
+                        "Signal: Bot Replies":"N/A","Signal: Low Total Eng":"N/A",
                     })
                     _prog.progress((_i+1)/_total)
                     continue
 
-                _status.markdown(f"⏳ **{_i+1}/{_total}** — `{_tid}`")
+                _status.markdown(f"⏳ **{_i+1}/{_total}** — `{_raw}`")
                 _m = _fetch_metrics(_tid)
 
                 if _m["error"]:
                     _rows_out.append({**_extra,
-                        "Tweet URL":_raw,"Views":0,"Likes":0,"Retweets":0,
-                        "Replies":0,"Quotes":0,"Bookmarks":0,
-                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,"Total Engagement":0,
+                        "Tweet URL": _raw,
+                        "Views":0,"Likes":0,"Retweets":0,"Replies":0,
+                        "Quotes":0,"Bookmarks":0,"Total Engagement":0,
+                        "Views/Likes":0,"RT/Likes":0,"Reply/Likes":0,
                         "Cheating Score":0,"Conclusion":f"❌ Error: {_m['error']}",
                         "Signal: Views/Likes":"N/A","Signal: Replies vs Likes":"N/A",
                         "Signal: RT vs Likes":"N/A","Signal: Reply Volume":"N/A",
-                        "Signal: Bot Replies":"N/A","Signal: Total Eng":"N/A",
+                        "Signal: Bot Replies":"N/A","Signal: Low Total Eng":"N/A",
                     })
                 else:
                     _sc, _verdict, _bd = _calc_score(_m, _tid, _bearer)
-                    _sig      = {s["signal"]: s["flag"] for s in _bd}
-                    _total_e  = _m["likes"] + _m["retweets"] + _m["replies"] + _m["quotes"]
+                    _sig     = {s["signal"]: s["flag"] for s in _bd}
+                    _total_e = _m["likes"] + _m["retweets"] + _m["replies"] + _m["quotes"]
                     _rows_out.append({**_extra,
-                        "Tweet URL":        f"https://x.com/i/status/{_tid}",
+                        "Tweet URL":        _raw,
                         "Views":            _m["views"],
                         "Likes":            _m["likes"],
                         "Retweets":         _m["retweets"],
@@ -958,27 +947,27 @@ with tab_fake:
                         "Reply/Likes":      round(_m["replies"]  / max(_m["likes"], 1), 2),
                         "Cheating Score":   _sc,
                         "Conclusion":       _verdict,
-                        "Signal: Views/Likes":      _sig.get("Views/Likes Ratio",       "N/A"),
-                        "Signal: Replies vs Likes": _sig.get("Replies vs Likes",        "N/A"),
-                        "Signal: RT vs Likes":      _sig.get("RT vs Likes",             "N/A"),
-                        "Signal: Reply Volume":     _sig.get("Reply Volume",            "N/A"),
-                        "Signal: Bot Replies":      _sig.get("Bot Replies",             "N/A"),
-                        "Signal: Total Eng":        _sig.get("Total Engagement thấp",  "N/A"),
+                        "Signal: Views/Likes":      _sig.get("Views/Likes Ratio",      "N/A"),
+                        "Signal: Replies vs Likes": _sig.get("Replies vs Likes",       "N/A"),
+                        "Signal: RT vs Likes":      _sig.get("RT vs Likes",            "N/A"),
+                        "Signal: Reply Volume":     _sig.get("Reply Volume",           "N/A"),
+                        "Signal: Bot Replies":      _sig.get("Bot Replies",            "N/A"),
+                        "Signal: Low Total Eng":    _sig.get("Low Total Engagement",   "N/A"),
                     })
 
-                _prog.progress((_i+1)/_total, text=f"Hoàn thành {_i+1}/{_total}")
+                _prog.progress((_i+1)/_total, text=f"{_i+1}/{_total} done")
                 import time as _time; _time.sleep(1.0)
 
             _status.empty()
-            _prog.progress(1.0, text="✅ Xong!")
+            _prog.progress(1.0, text="✅ Done!")
             st.session_state["fake_df_out"] = pd.DataFrame(_rows_out)
 
     # ── Results ──
     if "fake_df_out" in st.session_state:
         _df_out  = st.session_state["fake_df_out"]
-        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING",   na=False).sum()
-        _n_sus   = _df_out["Conclusion"].str.contains("SUSPICIOUS", na=False).sum()
-        _n_clean = _df_out["Conclusion"].str.contains("CLEAN",      na=False).sum()
+        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING",  na=False).sum()
+        _n_sus   = _df_out["Conclusion"].str.contains("SUSPICIOUS",na=False).sum()
+        _n_org   = _df_out["Conclusion"].str.contains("ORGANIC",   na=False).sum()
         _valid   = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
         _avg     = int(_valid.mean()) if len(_valid) else 0
 
@@ -993,8 +982,8 @@ with tab_fake:
             <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Suspicious</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
-            <div style="font-size:24px;font-weight:500;color:var(--text-success);">{_n_clean}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟢 Clean</div>
+            <div style="font-size:24px;font-weight:500;color:var(--text-success);">{_n_org}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟢 Organic</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
             <div style="font-size:24px;font-weight:500;color:var(--text-accent);">{_avg}</div>
@@ -1005,7 +994,7 @@ with tab_fake:
 
         _excel = _build_excel(_df_out)
         st.download_button(
-            "⬇ Export kết quả ra Excel",
+            "⬇ Export results to Excel",
             _excel,
             "mantle_hackathon_cheating_analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
