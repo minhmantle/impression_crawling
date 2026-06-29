@@ -607,17 +607,17 @@ with tab_fake:
           </tr>
         </thead>
         <tbody>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Views/Likes Ratio</td><td style="padding:10px 12px;color:var(--text-secondary);">Views / Likes &gt; 150:1</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+35</td><td style="padding:10px 12px;color:var(--text-muted);">View farming</td></tr>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Replies vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; Likes × 1.8</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+30</td><td style="padding:10px 12px;color:var(--text-muted);">Reply farming</td></tr>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">RT vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">RT &gt; Likes × 4</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+25</td><td style="padding:10px 12px;color:var(--text-muted);">RT farming</td></tr>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Reply Volume</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; 400</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+20</td><td style="padding:10px 12px;color:var(--text-muted);">Abnormal volume</td></tr>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Bot/Generic Replies</td><td style="padding:10px 12px;color:var(--text-secondary);">&gt; 50% generic replies (requires Bearer Token)</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+25</td><td style="padding:10px 12px;color:var(--text-muted);">Bot comments</td></tr>
-          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Low Total Engagement</td><td style="padding:10px 12px;color:var(--text-secondary);">Eng &lt; 500 but Views &gt; 50,000</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+15</td><td style="padding:10px 12px;color:var(--text-muted);">View-only, no real interaction</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Views/Likes Ratio</td><td style="padding:10px 12px;color:var(--text-secondary);">Views / Likes &gt; 150:1</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+30</td><td style="padding:10px 12px;color:var(--text-muted);">View farming</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Replies vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; Likes × 1.5</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+25</td><td style="padding:10px 12px;color:var(--text-muted);">Reply farming / pod</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">RT vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">RT &gt; Likes × 3</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+20</td><td style="padding:10px 12px;color:var(--text-muted);">RT farming</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Reply Volume</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; 300</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+15</td><td style="padding:10px 12px;color:var(--text-muted);">Abnormal reply volume</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Bot/Generic Replies</td><td style="padding:10px 12px;color:var(--text-secondary);">&gt; 45% generic replies (requires Bearer Token)</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+20</td><td style="padding:10px 12px;color:var(--text-muted);">Bot comment / pod</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Low Total Engagement</td><td style="padding:10px 12px;color:var(--text-secondary);">Eng &lt; 300 but Views high</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+10</td><td style="padding:10px 12px;color:var(--text-muted);">View-only, no real interaction</td></tr>
           <tr><td style="padding:10px 12px;font-weight:700;">Max</td><td></td><td style="padding:10px 12px;font-weight:700;">100</td><td></td></tr>
         </tbody>
       </table>
       <div style="margin-top:14px;font-size:13px;color:var(--text-secondary);">
-        Threshold: ≥80 🔴 Cheating &nbsp;·&nbsp; 50–79 🟡 Suspicious &nbsp;·&nbsp; &lt;50 🟢 Organic
+        Threshold: ≥80 🔴 Heavy farming &nbsp;·&nbsp; 55–79 🟠 Farming detected &nbsp;·&nbsp; 35–54 🟡 Light farming &nbsp;·&nbsp; &lt;35 🟢 Organic
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -812,12 +812,14 @@ with tab_fake:
         breakdown.append({"signal": "Low Total Engagement", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        total = min(total, 100)
+        total = round(total / 150 * 100)
 
         if total >= 80:
             verdict = "🔴 CHEATING DETECTED"
-        elif total >= 50:
-            verdict = "🟡 SUSPICIOUS"
+        elif total >= 55:
+            verdict = "🟠 FARMING DETECTED"
+        elif total >= 35:
+            verdict = "🟡 LIGHT FARMING"
         else:
             verdict = "🟢 ORGANIC"
 
@@ -830,9 +832,10 @@ with tab_fake:
             wb = writer.book
             ws = writer.sheets["Fake Analysis"]
             hdr   = wb.add_format({'bold':True,'bg_color':'#0a0a14','font_color':'#7c3aed','border':1,'align':'center'})
-            red_f = wb.add_format({'bg_color':'#3b0f0f','font_color':'#ef4444','align':'center','bold':True})
-            amb_f = wb.add_format({'bg_color':'#3b2a0f','font_color':'#f59e0b','align':'center','bold':True})
-            grn_f = wb.add_format({'bg_color':'#0f2a1a','font_color':'#10b981','align':'center','bold':True})
+            red_f  = wb.add_format({'bg_color':'#3b0f0f','font_color':'#ef4444','align':'center','bold':True})
+            org_f  = wb.add_format({'bg_color':'#3b1f0f','font_color':'#ea580c','align':'center','bold':True})
+            amb_f  = wb.add_format({'bg_color':'#3b2a0f','font_color':'#f59e0b','align':'center','bold':True})
+            grn_f  = wb.add_format({'bg_color':'#0f2a1a','font_color':'#10b981','align':'center','bold':True})
             num_f = wb.add_format({'num_format':'#,##0','align':'right'})
             rat_f = wb.add_format({'num_format':'0.0','align':'right'})
             for ci, cn in enumerate(df_out.columns):
@@ -841,8 +844,8 @@ with tab_fake:
             for ri, row in df_out.iterrows():
                 sc   = row.get("Cheating Score", 0) or 0
                 conc = str(row.get("Conclusion", ""))
-                sf   = red_f if sc >= 80 else amb_f if sc >= 50 else grn_f
-                cf   = red_f if "CHEATING" in conc else amb_f if "SUSPICIOUS" in conc else grn_f
+                sf   = red_f if sc >= 80 else org_f if sc >= 55 else amb_f if sc >= 35 else grn_f
+                cf   = red_f if "CHEATING" in conc else org_f if "FARMING DETECTED" in conc else amb_f if "LIGHT" in conc else grn_f
                 for ci, cn in enumerate(df_out.columns):
                     v = row[cn]; r = ri + 1
                     if cn == "Cheating Score":   ws.write(r, ci, v, sf)
@@ -984,21 +987,26 @@ with tab_fake:
     # ── Results ──
     if "fake_df_out" in st.session_state:
         _df_out  = st.session_state["fake_df_out"]
-        _n_cheat = _df_out["Conclusion"].str.contains("CHEATING",  na=False).sum()
-        _n_sus   = _df_out["Conclusion"].str.contains("SUSPICIOUS",na=False).sum()
-        _n_org   = _df_out["Conclusion"].str.contains("ORGANIC",   na=False).sum()
-        _valid   = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
-        _avg     = int(_valid.mean()) if len(_valid) else 0
+        _n_cheat  = _df_out["Conclusion"].str.contains("CHEATING",  na=False).sum()
+        _n_farm   = _df_out["Conclusion"].str.contains("FARMING",   na=False).sum()
+        _n_light  = _df_out["Conclusion"].str.contains("LIGHT",     na=False).sum()
+        _n_org    = _df_out["Conclusion"].str.contains("ORGANIC",   na=False).sum()
+        _valid    = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
+        _avg      = int(_valid.mean()) if len(_valid) else 0
 
         st.markdown(f"""
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0;">
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
             <div style="font-size:24px;font-weight:500;color:var(--text-danger);">{_n_cheat}</div>
             <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🔴 Cheating</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
-            <div style="font-size:24px;font-weight:500;color:var(--text-warning);">{_n_sus}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Suspicious</div>
+            <div style="font-size:24px;font-weight:500;color:#ea580c;">{_n_farm}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟠 Farming</div>
+          </div>
+          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
+            <div style="font-size:24px;font-weight:500;color:var(--text-warning);">{_n_light}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Light Farm</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
             <div style="font-size:24px;font-weight:500;color:var(--text-success);">{_n_org}</div>
