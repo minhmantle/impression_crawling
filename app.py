@@ -617,7 +617,7 @@ with tab_fake:
         </tbody>
       </table>
       <div style="margin-top:14px;font-size:13px;color:var(--text-secondary);">
-        Threshold: ≥80 🔴 Heavy farming &nbsp;·&nbsp; 55–79 🟠 Farming detected &nbsp;·&nbsp; 35–54 🟡 Light farming &nbsp;·&nbsp; &lt;35 🟢 Organic
+        Threshold: ≥70 🔴 Heavy farming &nbsp;·&nbsp; 35–69 🟡 Farming detected &nbsp;·&nbsp; &lt;35 🟢 Organic
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -814,12 +814,10 @@ with tab_fake:
 
         total = round(total / 150 * 100)
 
-        if total >= 80:
-            verdict = "🔴 CHEATING DETECTED"
-        elif total >= 55:
-            verdict = "🟠 FARMING DETECTED"
+        if total >= 70:
+            verdict = "🔴 HEAVY FARMING"
         elif total >= 35:
-            verdict = "🟡 LIGHT FARMING"
+            verdict = "🟡 FARMING DETECTED"
         else:
             verdict = "🟢 ORGANIC"
 
@@ -844,8 +842,8 @@ with tab_fake:
             for ri, row in df_out.iterrows():
                 sc   = row.get("Cheating Score", 0) or 0
                 conc = str(row.get("Conclusion", ""))
-                sf   = red_f if sc >= 80 else org_f if sc >= 55 else amb_f if sc >= 35 else grn_f
-                cf   = red_f if "CHEATING" in conc else org_f if "FARMING DETECTED" in conc else amb_f if "LIGHT" in conc else grn_f
+                sf   = red_f if sc >= 70 else amb_f if sc >= 35 else grn_f
+                cf   = red_f if "HEAVY" in conc else amb_f if "FARMING DETECTED" in conc else grn_f
                 for ci, cn in enumerate(df_out.columns):
                     v = row[cn]; r = ri + 1
                     if cn == "Cheating Score":   ws.write(r, ci, v, sf)
@@ -987,26 +985,21 @@ with tab_fake:
     # ── Results ──
     if "fake_df_out" in st.session_state:
         _df_out  = st.session_state["fake_df_out"]
-        _n_cheat  = _df_out["Conclusion"].str.contains("CHEATING",  na=False).sum()
-        _n_farm   = _df_out["Conclusion"].str.contains("FARMING",   na=False).sum()
-        _n_light  = _df_out["Conclusion"].str.contains("LIGHT",     na=False).sum()
-        _n_org    = _df_out["Conclusion"].str.contains("ORGANIC",   na=False).sum()
-        _valid    = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
-        _avg      = int(_valid.mean()) if len(_valid) else 0
+        _n_heavy = _df_out["Conclusion"].str.contains("HEAVY",   na=False).sum()
+        _n_farm  = _df_out["Conclusion"].str.contains("FARMING DETECTED", na=False).sum()
+        _n_org   = _df_out["Conclusion"].str.contains("ORGANIC", na=False).sum()
+        _valid   = _df_out[_df_out["Cheating Score"] > 0]["Cheating Score"]
+        _avg     = int(_valid.mean()) if len(_valid) else 0
 
         st.markdown(f"""
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;">
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
-            <div style="font-size:24px;font-weight:500;color:var(--text-danger);">{_n_cheat}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🔴 Cheating</div>
+            <div style="font-size:24px;font-weight:500;color:var(--text-danger);">{_n_heavy}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🔴 Heavy Farming</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
-            <div style="font-size:24px;font-weight:500;color:#ea580c;">{_n_farm}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟠 Farming</div>
-          </div>
-          <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
-            <div style="font-size:24px;font-weight:500;color:var(--text-warning);">{_n_light}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Light Farm</div>
+            <div style="font-size:24px;font-weight:500;color:var(--text-warning);">{_n_farm}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">🟡 Farming Detected</div>
           </div>
           <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;">
             <div style="font-size:24px;font-weight:500;color:var(--text-success);">{_n_org}</div>
