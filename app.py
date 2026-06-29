@@ -732,84 +732,84 @@ with tab_fake:
         if likes > 0:
             vlr = views / likes
             if vlr > 150:
-                pts, flag = 35, "HIGH"
+                pts, note = 35, "View farming"
                 detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — view farming detected"
             else:
-                pts, flag = 0, "OK"
+                pts, note = 0, ""
                 detail = f"Views/Likes = {vlr:.0f}:1 — normal"
         elif views > 0:
-            pts, flag = 35, "HIGH"
+            pts, note = 35, "View farming"
             detail = f"{views:,} views but 0 likes — clear view farming"
         else:
-            pts, flag = 0, "N/A"
+            pts, note = 0, ""
             detail = "Insufficient data"
-        breakdown.append({"signal": "Views/Likes Ratio", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "Views/Likes Ratio", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 2 — Replies > Likes × 1.8 (+30)
         if likes > 0:
             if replies > likes * 1.8:
-                pts, flag = 30, "HIGH"
+                pts, note = 30, "Reply farming / pod"
                 detail = f"Replies ({replies:,}) > Likes ({likes:,}) × 1.8 — reply farming"
             else:
-                pts, flag = 0, "OK"
+                pts, note = 0, ""
                 detail = f"Replies ({replies:,}) vs Likes ({likes:,}) — normal"
         else:
-            pts, flag = 0, "N/A"
+            pts, note = 0, ""
             detail = "Insufficient data"
-        breakdown.append({"signal": "Replies vs Likes", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "Replies vs Likes", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 3 — RT > Likes × 4 (+25)
         if likes > 0:
             if rts > likes * 4:
-                pts, flag = 25, "HIGH"
+                pts, note = 25, "RT farming"
                 detail = f"RT ({rts:,}) > Likes ({likes:,}) × 4 — RT farming"
             else:
-                pts, flag = 0, "OK"
+                pts, note = 0, ""
                 detail = f"RT ({rts:,}) vs Likes ({likes:,}) — normal"
         else:
-            pts, flag = 0, "N/A"
+            pts, note = 0, ""
             detail = "Insufficient data"
-        breakdown.append({"signal": "RT vs Likes", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "RT vs Likes", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 4 — Reply Volume > 400 (+20)
         if replies > 400:
-            pts, flag = 20, "HIGH"
+            pts, note = 20, "Abnormal reply volume"
             detail = f"Replies = {replies:,} (> 400) — abnormally high reply volume"
         else:
-            pts, flag = 0, "OK"
+            pts, note = 0, ""
             detail = f"Replies = {replies:,} — normal"
-        breakdown.append({"signal": "Reply Volume", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "Reply Volume", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 5 — Bot/generic replies > 50% (+25)
         if bearer and replies > 0:
             _ratio, _generic, _checked = _check_bot_replies(tid, bearer)
             if _checked == 0:
-                pts, flag = 0, "N/A"
+                pts, note = 0, ""
                 detail = "Could not fetch replies"
             elif _ratio > 0.50:
-                pts, flag = 25, "HIGH"
+                pts, note = 25, "Bot comment / pod"
                 detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked)"
             else:
-                pts, flag = 0, "OK"
+                pts, note = 0, ""
                 detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked) — normal"
         else:
-            pts, flag = 0, "N/A"
+            pts, note = 0, ""
             detail = "Requires Bearer Token" if not bearer else "No replies to check"
-        breakdown.append({"signal": "Bot Replies", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "Bot Replies", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         # Signal 6 — Total eng < 500 but views > 50,000 (+15)
         if total_eng < 500 and views > 50_000:
-            pts, flag = 15, "HIGH"
-            detail = f"Total engagement = {total_eng:,} (< 500) but views = {views:,} — view-only, no real interaction"
+            pts, note = 15, "View-only, no real interaction"
+            detail = f"Total engagement = {total_eng:,} (< 500) but views = {views:,}"
         else:
-            pts, flag = 0, "OK"
+            pts, note = 0, ""
             detail = f"Total engagement = {total_eng:,} / Views = {views:,} — normal"
-        breakdown.append({"signal": "Low Total Engagement", "flag": flag, "pts": pts, "detail": detail})
+        breakdown.append({"signal": "Low Total Engagement", "note": note, "pts": pts, "detail": detail})
         total += pts
 
         total = round(total / 150 * 100)
@@ -951,7 +951,7 @@ with tab_fake:
                     })
                 else:
                     _sc, _verdict, _bd = _calc_score(_m, _tid, _bearer)
-                    _sig     = {s["signal"]: s["flag"] for s in _bd}
+                    _sig     = {s["signal"]: s["note"] for s in _bd}
                     _total_e = _m["likes"] + _m["retweets"] + _m["replies"] + _m["quotes"]
                     _rows_out.append({**_extra,
                         "Tweet URL":        _raw,
@@ -967,12 +967,12 @@ with tab_fake:
                         "Reply/Likes":      round(_m["replies"]  / max(_m["likes"], 1), 2),
                         "Cheating Score":   _sc,
                         "Conclusion":       _verdict,
-                        "Signal: Views/Likes":      _sig.get("Views/Likes Ratio",      "N/A"),
-                        "Signal: Replies vs Likes": _sig.get("Replies vs Likes",       "N/A"),
-                        "Signal: RT vs Likes":      _sig.get("RT vs Likes",            "N/A"),
-                        "Signal: Reply Volume":     _sig.get("Reply Volume",           "N/A"),
-                        "Signal: Bot Replies":      _sig.get("Bot Replies",            "N/A"),
-                        "Signal: Low Total Eng":    _sig.get("Low Total Engagement",   "N/A"),
+                        "Signal: Views/Likes":      _sig.get("Views/Likes Ratio",      ""),
+                        "Signal: Replies vs Likes": _sig.get("Replies vs Likes",       ""),
+                        "Signal: RT vs Likes":      _sig.get("RT vs Likes",            ""),
+                        "Signal: Reply Volume":     _sig.get("Reply Volume",           ""),
+                        "Signal: Bot Replies":      _sig.get("Bot Replies",            ""),
+                        "Signal: Low Total Eng":    _sig.get("Low Total Engagement",   ""),
                     })
 
                 _prog.progress((_i+1)/_total, text=f"{_i+1}/{_total} done")
