@@ -594,11 +594,30 @@ with tab_fake:
 
     st.markdown("""
     <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
-      <div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">
-        Analyze tweets to detect fake/farmed engagement. Fully free — no API key required for basic signals.<br>
-        <span style="font-size:12px;color:var(--text-muted);">
-          Scoring: Views/Likes (+30) · Replies vs Likes (+25) · RT vs Likes (+20) · Reply Volume (+15) · Bot Replies (+20) · Low Total Eng (+10) — Max 100
-        </span>
+      <p style="font-size:14px;color:var(--text-secondary);margin:0 0 16px;">
+        Analyze tweets to detect fake/farmed engagement. Scores are cumulative — the higher the score, the more suspicious the post.
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="border-bottom:0.5px solid var(--border-strong);">
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">Signal</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">Condition</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">Points</th>
+            <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Views/Likes Ratio</td><td style="padding:10px 12px;color:var(--text-secondary);">Views / Likes &gt; 150:1</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+35</td><td style="padding:10px 12px;color:var(--text-muted);">View farming</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Replies vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; Likes × 1.8</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+30</td><td style="padding:10px 12px;color:var(--text-muted);">Reply farming</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">RT vs Likes</td><td style="padding:10px 12px;color:var(--text-secondary);">RT &gt; Likes × 4</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+25</td><td style="padding:10px 12px;color:var(--text-muted);">RT farming</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Reply Volume</td><td style="padding:10px 12px;color:var(--text-secondary);">Replies &gt; 400</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+20</td><td style="padding:10px 12px;color:var(--text-muted);">Abnormal volume</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Bot/Generic Replies</td><td style="padding:10px 12px;color:var(--text-secondary);">&gt; 50% generic replies (requires Bearer Token)</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+25</td><td style="padding:10px 12px;color:var(--text-muted);">Bot comments</td></tr>
+          <tr style="border-bottom:0.5px solid var(--border);"><td style="padding:10px 12px;font-weight:500;">Low Total Engagement</td><td style="padding:10px 12px;color:var(--text-secondary);">Eng &lt; 500 but Views &gt; 50,000</td><td style="padding:10px 12px;color:var(--text-danger);font-weight:500;">+15</td><td style="padding:10px 12px;color:var(--text-muted);">View-only, no real interaction</td></tr>
+          <tr><td style="padding:10px 12px;font-weight:700;">Max</td><td></td><td style="padding:10px 12px;font-weight:700;">100</td><td></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:14px;font-size:13px;color:var(--text-secondary);">
+        Threshold: ≥80 🔴 Cheating &nbsp;·&nbsp; 50–79 🟡 Suspicious &nbsp;·&nbsp; &lt;50 🟢 Organic
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -691,14 +710,14 @@ with tab_fake:
 
     def _calc_score(m: dict, tid: str, bearer: str) -> tuple[int, str, list]:
         """
-        Scoring (max 100):
-        - Views/Likes > 150:1                     → +30
-        - Replies > Likes × 1.5                   → +25
-        - RT > Likes × 3                          → +20
-        - Replies > 300                           → +15
-        - Bot/generic replies > 45%               → +20 (requires Bearer)
-        - Total eng < 300 but views > 5000        → +10
-        Threshold: ≥70 Cheating, 45-69 Suspicious, <45 Organic
+        Strict scoring (max 100, scaled from raw 150):
+        - Views/Likes > 150:1                     → +35
+        - Replies > Likes × 1.8                   → +30
+        - RT > Likes × 4                          → +25
+        - Replies > 400                           → +20
+        - Bot/generic replies > 50%               → +25 (requires Bearer)
+        - Total eng < 500 but views > 50,000      → +15
+        Threshold: ≥80 Cheating, 50-79 Suspicious, <50 Organic
         """
         views     = m["views"]
         likes     = m["likes"]
@@ -709,17 +728,17 @@ with tab_fake:
         total     = 0
         breakdown = []
 
-        # Signal 1 — Views/Likes > 150:1 (+30)
+        # Signal 1 — Views/Likes > 150:1 (+35)
         if likes > 0:
             vlr = views / likes
             if vlr > 150:
-                pts, flag = 30, "HIGH"
-                detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — view inflation detected"
+                pts, flag = 35, "HIGH"
+                detail = f"Views/Likes = {vlr:.0f}:1 (> 150:1) — view farming detected"
             else:
                 pts, flag = 0, "OK"
                 detail = f"Views/Likes = {vlr:.0f}:1 — normal"
         elif views > 0:
-            pts, flag = 30, "HIGH"
+            pts, flag = 35, "HIGH"
             detail = f"{views:,} views but 0 likes — clear view farming"
         else:
             pts, flag = 0, "N/A"
@@ -727,11 +746,11 @@ with tab_fake:
         breakdown.append({"signal": "Views/Likes Ratio", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 2 — Replies > Likes × 1.5 (+25)
+        # Signal 2 — Replies > Likes × 1.8 (+30)
         if likes > 0:
-            if replies > likes * 1.5:
-                pts, flag = 25, "HIGH"
-                detail = f"Replies ({replies:,}) > Likes ({likes:,}) × 1.5 — reply farming/pod"
+            if replies > likes * 1.8:
+                pts, flag = 30, "HIGH"
+                detail = f"Replies ({replies:,}) > Likes ({likes:,}) × 1.8 — reply farming"
             else:
                 pts, flag = 0, "OK"
                 detail = f"Replies ({replies:,}) vs Likes ({likes:,}) — normal"
@@ -741,11 +760,11 @@ with tab_fake:
         breakdown.append({"signal": "Replies vs Likes", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 3 — RT > Likes × 3 (+20)
+        # Signal 3 — RT > Likes × 4 (+25)
         if likes > 0:
-            if rts > likes * 3:
-                pts, flag = 20, "HIGH"
-                detail = f"RT ({rts:,}) > Likes ({likes:,}) × 3 — RT farming"
+            if rts > likes * 4:
+                pts, flag = 25, "HIGH"
+                detail = f"RT ({rts:,}) > Likes ({likes:,}) × 4 — RT farming"
             else:
                 pts, flag = 0, "OK"
                 detail = f"RT ({rts:,}) vs Likes ({likes:,}) — normal"
@@ -755,24 +774,24 @@ with tab_fake:
         breakdown.append({"signal": "RT vs Likes", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 4 — Reply Volume > 300 (+15)
-        if replies > 300:
-            pts, flag = 15, "HIGH"
-            detail = f"Replies = {replies:,} (> 300) — abnormally high reply volume"
+        # Signal 4 — Reply Volume > 400 (+20)
+        if replies > 400:
+            pts, flag = 20, "HIGH"
+            detail = f"Replies = {replies:,} (> 400) — abnormally high reply volume"
         else:
             pts, flag = 0, "OK"
             detail = f"Replies = {replies:,} — normal"
         breakdown.append({"signal": "Reply Volume", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 5 — Bot/generic replies > 45% (+20)
+        # Signal 5 — Bot/generic replies > 50% (+25)
         if bearer and replies > 0:
             _ratio, _generic, _checked = _check_bot_replies(tid, bearer)
             if _checked == 0:
                 pts, flag = 0, "N/A"
                 detail = "Could not fetch replies"
-            elif _ratio > 0.45:
-                pts, flag = 20, "HIGH"
+            elif _ratio > 0.50:
+                pts, flag = 25, "HIGH"
                 detail = f"Bot/generic replies = {_ratio:.0%} ({_generic}/{_checked} checked)"
             else:
                 pts, flag = 0, "OK"
@@ -783,10 +802,10 @@ with tab_fake:
         breakdown.append({"signal": "Bot Replies", "flag": flag, "pts": pts, "detail": detail})
         total += pts
 
-        # Signal 6 — Total eng < 300 but views > 5000 (+10)
-        if total_eng < 300 and views > 5000:
-            pts, flag = 10, "HIGH"
-            detail = f"Total engagement = {total_eng:,} (< 300) but views = {views:,} — view-only, no real interaction"
+        # Signal 6 — Total eng < 500 but views > 50,000 (+15)
+        if total_eng < 500 and views > 50_000:
+            pts, flag = 15, "HIGH"
+            detail = f"Total engagement = {total_eng:,} (< 500) but views = {views:,} — view-only, no real interaction"
         else:
             pts, flag = 0, "OK"
             detail = f"Total engagement = {total_eng:,} / Views = {views:,} — normal"
@@ -795,9 +814,9 @@ with tab_fake:
 
         total = min(total, 100)
 
-        if total >= 70:
+        if total >= 80:
             verdict = "🔴 CHEATING DETECTED"
-        elif total >= 45:
+        elif total >= 50:
             verdict = "🟡 SUSPICIOUS"
         else:
             verdict = "🟢 ORGANIC"
@@ -822,7 +841,7 @@ with tab_fake:
             for ri, row in df_out.iterrows():
                 sc   = row.get("Cheating Score", 0) or 0
                 conc = str(row.get("Conclusion", ""))
-                sf   = red_f if sc >= 70 else amb_f if sc >= 45 else grn_f
+                sf   = red_f if sc >= 80 else amb_f if sc >= 50 else grn_f
                 cf   = red_f if "CHEATING" in conc else amb_f if "SUSPICIOUS" in conc else grn_f
                 for ci, cn in enumerate(df_out.columns):
                     v = row[cn]; r = ri + 1
