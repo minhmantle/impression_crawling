@@ -608,24 +608,32 @@ with tab_fake:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Config sidebar-style inside tab ──
-    with st.expander("⚙️ Cấu hình API & Analysis depth", expanded=True):
-        c1, c2 = st.columns([2, 1])
+    # ── Load Bearer Token từ Streamlit Secrets ──
+    try:
+        _bearer = st.secrets["BEARER_TOKEN"]
+    except Exception:
+        _bearer = ""
+
+    if not _bearer:
+        st.error("""
+**⚠️ Chưa cấu hình Bearer Token.**
+
+Để dùng tính năng này, vào **Streamlit Cloud → App Settings → Secrets** và thêm:
+
+```toml
+BEARER_TOKEN = "paste_bearer_token_của_mày_vào_đây"
+```
+
+Sau khi save, app tự restart và sẵn sàng dùng — không cần nhập lại lần nào nữa.
+        """)
+        st.stop()
+
+    # ── Config analysis depth ──
+    with st.expander("⚙️ Analysis depth", expanded=False):
+        c1, c2 = st.columns(2)
         with c1:
-            # Secrets fallback
-            _bearer = st.secrets.get("BEARER_TOKEN", "") if hasattr(st, "secrets") else ""
-            if _bearer:
-                st.success("✅ Bearer Token loaded from Streamlit Secrets", icon="🔐")
-            else:
-                _bearer = st.text_input(
-                    "X API Bearer Token",
-                    type="password",
-                    placeholder="AAAAAAA...",
-                    help="Basic tier ($100/mo). Hoặc set BEARER_TOKEN trong Streamlit Secrets.",
-                    key="fake_bearer"
-                )
-        with c2:
             _max_likers = st.slider("Max likers scan", 50, 300, 100, 50, key="fake_likers")
+        with c2:
             _max_rts    = st.slider("Max RTs scan",    50, 200, 100, 50, key="fake_rts")
 
     # ── Template download ──
@@ -813,8 +821,7 @@ with tab_fake:
                 _df_out = pd.DataFrame(_rows_out)
                 st.session_state["fake_df_out"] = _df_out
 
-    elif _uploaded and not _bearer:
-        st.warning("⚠️ Nhập X API Bearer Token ở phần cấu hình phía trên để bắt đầu phân tích.")
+
 
     # ── Display results ──
     if "fake_df_out" in st.session_state:
